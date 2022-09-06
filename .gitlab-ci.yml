@@ -1,0 +1,80 @@
+include:
+  #- template: Security/Secret-Detection.gitlab-ci.yml
+  - remote: https://gitlab.p.ghpr.asia/infra/cicd/-/raw/master/.gitlab/rules.yml
+  - remote: https://gitlab.p.ghpr.asia/infra/cicd/-/raw/master/.gitlab/artifacts.yml
+  - remote: https://gitlab.p.ghpr.asia/infra/cicd/-/raw/master/.gitlab/deployments.yml
+  - remote: https://gitlab.p.ghpr.asia/infra/cicd/-/raw/master/.gitlab/cargo.yml
+
+variables:
+  # can parallelize if we have multiple applications using `matrix`
+  APP: default
+  # artifact path - will be cached between builds
+  RUSTC_WRAPPER: /opt/bin/sccache
+  SCCACHE_SERVER_PORT: "4226"
+  SCCACHE_IDLE_TIMEOUT: "0"
+  SCCACHE_NO_DAEMON: "1"
+  SCCACHE_GCS_RW_MODE: "READ_WRITE"
+  SCCACHE_LOG: error
+  #RUST_BACKTRACE: 1
+  #SCCACHE_ERROR_LOG: /tmp/sccache_log.txt
+  SCCACHE_GCS_OAUTH_URL: "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+  SCCACHE_GCS_BUCKET: "ghpr-mgmt-build-sccache-880396889"
+  GCS_PATH: "rust/releases"
+  GCS_FOLDER: "ghpr-mgmt-build-artifacts-880396889/${GCS_PATH}"
+  GIT_SUBMODULE_STRATEGY: recursive
+  GIT_SUBMODULE_UPDATE_FLAGS: --jobs 4
+  LIBCLANG_PATH: "/opt/clang130/lib64"
+
+stages:
+  - prep
+  - lint
+  - build
+  - test
+  - deploy
+
+cache-newest:
+  extends:
+    - .rust_stable
+    - .cargo_fetch_job
+    - .cargo_build_tags
+    - .cargo_fetch_artifacts
+    - .run_always
+
+stable-lint:
+  extends:
+    - .rust_stable
+    - .cargo_clippy_job
+    - .cargo_build_tags
+    - .run_always
+  dependencies:
+    - cache-newest
+  needs:
+    - cache-newest
+
+stable-build-and-test:
+  extends:
+    - .rust_stable
+    - .cargo_build_and_test_job
+    - .cargo_build_tags
+    # - .cargo_build_artifacts
+    - .cargo_test_artifacts
+    - .cargo_coverage_artifacts
+    - .run_automatically_mr
+  dependencies:
+    - cache-newest
+  needs:
+    - cache-newest
+    - stable-lint
+
+deploy-crate:
+  extends:
+    - .rust_stable
+    - .cargo_build_and_publish_job
+    - .cargo_build_tags
+    # change to `.run_deployment_manual` if you want this step to be manual
+    - .run_deployment
+  dependencies:
+    - cache-newest
+  needs:
+    - cache-newest
+    - stable-lint
