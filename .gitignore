@@ -1,0 +1,5 @@
+.cargo-cache
+.cargo
+junit.xml
+cobertura.xml
+tarpaulin-report.html
