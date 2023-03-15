@@ -24,6 +24,9 @@ variables:
   GIT_SUBMODULE_STRATEGY: recursive
   GIT_SUBMODULE_UPDATE_FLAGS: --jobs 4
   LIBCLANG_PATH: "/opt/clang130/lib64"
+  GHP_IMAGE_LOCATION: us-central1
+
+
 
 stages:
   - prep
@@ -34,17 +37,17 @@ stages:
 
 cache-newest:
   extends:
-    - .rust_stable
+    - .rust_latest
     - .cargo_fetch_job
-    - .cargo_build_tags
+    - .build_tags_interns
     - .cargo_fetch_artifacts
     - .run_always
 
 stable-lint:
   extends:
-    - .rust_stable
+    - .rust_latest
     - .cargo_clippy_job
-    - .cargo_build_tags
+    - .build_tags_interns
     - .run_always
   dependencies:
     - cache-newest
@@ -53,9 +56,9 @@ stable-lint:
 
 stable-build-and-test:
   extends:
-    - .rust_stable
+    - .rust_latest
     - .cargo_build_and_test_job
-    - .cargo_build_tags
+    - .build_tags_interns
     # - .cargo_build_artifacts
     - .cargo_test_artifacts
     - .cargo_coverage_artifacts
@@ -68,9 +71,9 @@ stable-build-and-test:
 
 deploy-crate:
   extends:
-    - .rust_stable
+    - .rust_latest
     - .cargo_build_and_publish_job
-    - .cargo_build_tags
+    - .build_tags_interns
     # change to `.run_deployment_manual` if you want this step to be manual
     - .run_deployment
   dependencies:
