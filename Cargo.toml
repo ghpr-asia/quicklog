@@ -1,0 +1,6 @@
+[workspace]
+members = [
+  "quicklog",
+  "quicklog-clock",
+  "quicklog-flush"
+]

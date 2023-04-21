@@ -3,3 +3,8 @@
 junit.xml
 cobertura.xml
 tarpaulin-report.html
+target/
+logs/
+.DS_Store
+Cargo.lock
+.vscode/
