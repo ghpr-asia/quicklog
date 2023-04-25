@@ -37,6 +37,23 @@ fn bench_logger_and_flush(b: &mut Bencher) {
         .expect("Unable to join quicklog flush thread");
 }
 
+fn bench_logger_and_flush_pass_by_ref(b: &mut Bencher) {
+    let bs = black_box(BigStruct {
+        vec: [1; 100],
+        some: "The quick brown fox jumps over the lazy dog",
+    });
+    with_flush!(NoopFlusher);
+    let write_thread = thread::spawn(move || {
+        quicklog::flush!();
+    });
+    b.iter(|| {
+        quicklog::info!("Here's some text {:?}", &bs);
+    });
+    write_thread
+        .join()
+        .expect("Unable to join quicklog flush thread");
+}
+
 fn bench_logger_no_args_and_flush(b: &mut Bencher) {
     with_flush!(NoopFlusher);
     let write_thread = thread::spawn(move || {
@@ -73,13 +90,12 @@ fn bench_callsite_tracing(b: &mut Bencher) {
     });
 
     let (non_blocking, guard) = tracing_appender::non_blocking(NoopWriter {});
-    if let Err(err) = tracing_subscriber::fmt()
+
+    // error can just be due to the subscriber already being init in prev bench run, so we ignore it
+    if let Err(_err) = tracing_subscriber::fmt()
         .with_writer(non_blocking)
         .try_init()
-    {
-        eprintln!("Errro init {}", err);
-        return;
-    }
+    {}
 
     b.iter(|| {
         tracing::info!("Here's some text {:?}", bs);
@@ -113,10 +129,13 @@ fn bench_callsite_delog(b: &mut Bencher) {
 
 fn bench_loggers(c: &mut Criterion) {
     let mut group = c.benchmark_group("Loggers");
-    // group.bench_function("bench logger", bench_callsite);
     group.bench_function(
         "bench logger no args with noop flush",
         bench_logger_no_args_and_flush,
+    );
+    group.bench_function(
+        "bench logger with noop flush, pass by ref",
+        bench_logger_and_flush_pass_by_ref,
     );
     group.bench_function("bench logger with noop flush", bench_logger_and_flush);
     group.bench_function("bench tracing", bench_callsite_tracing);

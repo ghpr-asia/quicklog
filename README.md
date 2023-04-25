@@ -23,6 +23,7 @@ Tell people where they can go to for help. It can be any combination of an issue
 ## Roadmap
 
 - [] Review uses of unsafe code
+- [] Review better way to "own" arguments `try_log!` macro, instead of having to hardcode it
 - [] Remove all uses of unwrap
 - [] Benchmark multi-threaded performance
 - [] Check out [join-lazy-format](https://github.com/danielhenrymantilla/join-lazy-fmt-rs/blob/master/src/lazy_format.rs) to see if we are able to remove the double lazy format in `try_log!` macro

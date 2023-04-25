@@ -52,7 +52,12 @@ macro_rules! is_level_enabled {
 }
 
 /// Internal API that runs log and returns a Result, matches either a literal
-/// or a literal with some arguments
+/// or a literal with some arguments.
+///
+/// For the up to the first 10 args, references are supported if the reference implements [`Clone`]
+///
+/// If there are more than 10 args that are references, the user has to manually call `.clone()` on all arguments
+/// that are references.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! try_log {
@@ -60,12 +65,312 @@ macro_rules! try_log {
     use $crate::{Log, callsite::Callsite, clone_sender};
     use once_cell::sync::Lazy;
 
-    static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
-
-    let log_line = $crate::make_container!(
-      lazy_format::lazy_format!("[{}]\t{}", $lvl, $static_str));
-
     if $crate::is_level_enabled!($lvl) {
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, $static_str));
+
+      $crate::logger().log(
+        &CALLSITE,
+        log_line
+      )
+    } else {
+      Ok(())
+    }
+  }};
+
+  //TODO: There are issues passing in reference arguments of different lifetimes.
+  // As a temporary fix, the macro for up to 10 arguments are handwritten. However,
+  // there should be a better way to do this... Perhaps writing some recursive macro
+  // to expand and name the arguments automatically? However, this works for now to
+  // continue making progress
+  ($lvl:expr, $static_str:literal, $arg:tt) => {{
+    if $crate::is_level_enabled!($lvl) {
+      use $crate::{Log, callsite::Callsite, clone_sender};
+      use once_cell::sync::Lazy;
+
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      let owned = $arg.to_owned();
+
+      // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
+      // though, measurements have shown that this double wrapping does not lead to
+      // a significant increase in run-time.
+      let lazy_format_string = lazy_format::lazy_format!($static_str, owned);
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
+
+      $crate::logger().log(
+        &CALLSITE,
+        log_line
+      )
+    } else {
+      Ok(())
+    }
+  }};
+
+  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt) => {{
+    if $crate::is_level_enabled!($lvl) {
+      use $crate::{Log, callsite::Callsite, clone_sender};
+      use once_cell::sync::Lazy;
+
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      let owned_arg1 = $arg1.to_owned();
+      let owned_arg2 = $arg2.to_owned();
+
+      // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
+      // though, measurements have shown that this double wrapping does not lead to
+      // a significant increase in run-time.
+      let lazy_format_string = lazy_format::lazy_format!($static_str, owned_arg1, owned_arg2);
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
+
+      $crate::logger().log(
+        &CALLSITE,
+        log_line
+      )
+    } else {
+      Ok(())
+    }
+  }};
+
+  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt) => {{
+    if $crate::is_level_enabled!($lvl) {
+      use $crate::{Log, callsite::Callsite, clone_sender};
+      use once_cell::sync::Lazy;
+
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      let owned_arg1 = $arg1.to_owned();
+      let owned_arg2 = $arg2.to_owned();
+      let owned_arg3 = $arg3.to_owned();
+
+      // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
+      // though, measurements have shown that this double wrapping does not lead to
+      // a significant increase in run-time.
+      let lazy_format_string = lazy_format::lazy_format!($static_str, owned_arg1, owned_arg2, owned_arg3);
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
+
+      $crate::logger().log(
+        &CALLSITE,
+        log_line
+      )
+    } else {
+      Ok(())
+    }
+  }};
+
+  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt) => {{
+    if $crate::is_level_enabled!($lvl) {
+      use $crate::{Log, callsite::Callsite, clone_sender};
+      use once_cell::sync::Lazy;
+
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      let owned_arg1 = $arg1.to_owned();
+      let owned_arg2 = $arg2.to_owned();
+      let owned_arg3 = $arg3.to_owned();
+      let owned_arg4 = $arg4.to_owned();
+
+      // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
+      // though, measurements have shown that this double wrapping does not lead to
+      // a significant increase in run-time.
+      let lazy_format_string = lazy_format::lazy_format!($static_str, owned_arg1, owned_arg2, owned_arg3, owned_arg4);
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
+
+      $crate::logger().log(
+        &CALLSITE,
+        log_line
+      )
+    } else {
+      Ok(())
+    }
+  }};
+
+  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt) => {{
+    if $crate::is_level_enabled!($lvl) {
+      use $crate::{Log, callsite::Callsite, clone_sender};
+      use once_cell::sync::Lazy;
+
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      let owned_arg1 = $arg1.to_owned();
+      let owned_arg2 = $arg2.to_owned();
+      let owned_arg3 = $arg3.to_owned();
+      let owned_arg4 = $arg4.to_owned();
+      let owned_arg5 = $arg5.to_owned();
+
+      // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
+      // though, measurements have shown that this double wrapping does not lead to
+      // a significant increase in run-time.
+      let lazy_format_string = lazy_format::lazy_format!($static_str, owned_arg1, owned_arg2, owned_arg3, owned_arg4, owned_arg5);
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
+
+      $crate::logger().log(
+        &CALLSITE,
+        log_line
+      )
+    } else {
+      Ok(())
+    }
+  }};
+
+  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt, $arg6:tt) => {{
+    if $crate::is_level_enabled!($lvl) {
+      use $crate::{Log, callsite::Callsite, clone_sender};
+      use once_cell::sync::Lazy;
+
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      let owned_arg1 = $arg1.to_owned();
+      let owned_arg2 = $arg2.to_owned();
+      let owned_arg3 = $arg3.to_owned();
+      let owned_arg4 = $arg4.to_owned();
+      let owned_arg5 = $arg5.to_owned();
+      let owned_arg6 = $arg6.to_owned();
+
+      // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
+      // though, measurements have shown that this double wrapping does not lead to
+      // a significant increase in run-time.
+      let lazy_format_string = lazy_format::lazy_format!($static_str, owned_arg1, owned_arg2, owned_arg3, owned_arg4, owned_arg5, owned_arg6);
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
+
+      $crate::logger().log(
+        &CALLSITE,
+        log_line
+      )
+    } else {
+      Ok(())
+    }
+  }};
+
+  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt, $arg6:tt, $arg7:tt) => {{
+    if $crate::is_level_enabled!($lvl) {
+      use $crate::{Log, callsite::Callsite, clone_sender};
+      use once_cell::sync::Lazy;
+
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      let owned_arg1 = $arg1.to_owned();
+      let owned_arg2 = $arg2.to_owned();
+      let owned_arg3 = $arg3.to_owned();
+      let owned_arg4 = $arg4.to_owned();
+      let owned_arg5 = $arg5.to_owned();
+      let owned_arg6 = $arg6.to_owned();
+      let owned_arg7 = $arg7.to_owned();
+
+      // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
+      // though, measurements have shown that this double wrapping does not lead to
+      // a significant increase in run-time.
+      let lazy_format_string = lazy_format::lazy_format!($static_str, owned_arg1, owned_arg2, owned_arg3, owned_arg4, owned_arg5, owned_arg6, owned_arg7);
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
+
+      $crate::logger().log(
+        &CALLSITE,
+        log_line
+      )
+    } else {
+      Ok(())
+    }
+  }};
+
+  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt, $arg6:tt, $arg7:tt, $arg8:tt) => {{
+    if $crate::is_level_enabled!($lvl) {
+      use $crate::{Log, callsite::Callsite, clone_sender};
+      use once_cell::sync::Lazy;
+
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      let owned_arg1 = $arg1.to_owned();
+      let owned_arg2 = $arg2.to_owned();
+      let owned_arg3 = $arg3.to_owned();
+      let owned_arg4 = $arg4.to_owned();
+      let owned_arg5 = $arg5.to_owned();
+      let owned_arg6 = $arg6.to_owned();
+      let owned_arg7 = $arg7.to_owned();
+      let owned_arg8 = $arg8.to_owned();
+
+      // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
+      // though, measurements have shown that this double wrapping does not lead to
+      // a significant increase in run-time.
+      let lazy_format_string = lazy_format::lazy_format!($static_str, owned_arg1, owned_arg2, owned_arg3, owned_arg4, owned_arg5, owned_arg6, owned_arg7, owned_arg8);
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
+
+      $crate::logger().log(
+        &CALLSITE,
+        log_line
+      )
+    } else {
+      Ok(())
+    }
+  }};
+
+  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt, $arg6:tt, $arg7:tt, $arg8:tt, $arg9:tt) => {{
+    if $crate::is_level_enabled!($lvl) {
+      use $crate::{Log, callsite::Callsite, clone_sender};
+      use once_cell::sync::Lazy;
+
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      let owned_arg1 = $arg1.to_owned();
+      let owned_arg2 = $arg2.to_owned();
+      let owned_arg3 = $arg3.to_owned();
+      let owned_arg4 = $arg4.to_owned();
+      let owned_arg5 = $arg5.to_owned();
+      let owned_arg6 = $arg6.to_owned();
+      let owned_arg7 = $arg7.to_owned();
+      let owned_arg8 = $arg8.to_owned();
+      let owned_arg9 = $arg9.to_owned();
+
+      // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
+      // though, measurements have shown that this double wrapping does not lead to
+      // a significant increase in run-time.
+      let lazy_format_string = lazy_format::lazy_format!($static_str, owned_arg1, owned_arg2, owned_arg3, owned_arg4, owned_arg5, owned_arg6, owned_arg7, owned_arg8, owned_arg9);
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
+
+      $crate::logger().log(
+        &CALLSITE,
+        log_line
+      )
+    } else {
+      Ok(())
+    }
+  }};
+
+  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt, $arg6:tt, $arg7:tt, $arg8:tt, $arg9:tt, $arg10:tt) => {{
+    if $crate::is_level_enabled!($lvl) {
+      use $crate::{Log, callsite::Callsite, clone_sender};
+      use once_cell::sync::Lazy;
+
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      let owned_arg1 = $arg1.to_owned();
+      let owned_arg2 = $arg2.to_owned();
+      let owned_arg3 = $arg3.to_owned();
+      let owned_arg4 = $arg4.to_owned();
+      let owned_arg5 = $arg5.to_owned();
+      let owned_arg6 = $arg6.to_owned();
+      let owned_arg7 = $arg7.to_owned();
+      let owned_arg8 = $arg8.to_owned();
+      let owned_arg9 = $arg9.to_owned();
+      let owned_arg10 = $arg10.to_owned();
+
+      // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
+      // though, measurements have shown that this double wrapping does not lead to
+      // a significant increase in run-time.
+      let lazy_format_string = lazy_format::lazy_format!($static_str, owned_arg1, owned_arg2, owned_arg3, owned_arg4, owned_arg5, owned_arg6, owned_arg7, owned_arg8, owned_arg9, owned_arg10);
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
+
       $crate::logger().log(
         &CALLSITE,
         log_line
@@ -79,16 +384,16 @@ macro_rules! try_log {
     use $crate::{Log, callsite::Callsite, clone_sender};
     use once_cell::sync::Lazy;
 
-    static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
-
-    // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
-    // though, measurements have shown that this double wrapping does not lead to
-    // a significant increase in run-time.
-    let lazy_format_string = lazy_format::lazy_format!($static_str, $($args)+);
-    let log_line = $crate::make_container!(
-      lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
-
     if $crate::is_level_enabled!($lvl) {
+      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+
+      // TODO: Figure out a way to remove the double lazy_format! wrapping if possible
+      // though, measurements have shown that this double wrapping does not lead to
+      // a significant increase in run-time.
+      let lazy_format_string = lazy_format::lazy_format!($static_str, $($args)+);
+      let log_line = $crate::make_container!(
+        lazy_format::lazy_format!("[{}]\t{}", $lvl, lazy_format_string));
+
       $crate::logger().log(
         &CALLSITE,
         log_line
