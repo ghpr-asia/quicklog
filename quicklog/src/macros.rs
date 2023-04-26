@@ -85,7 +85,7 @@ macro_rules! try_log {
   // there should be a better way to do this... Perhaps writing some recursive macro
   // to expand and name the arguments automatically? However, this works for now to
   // continue making progress
-  ($lvl:expr, $static_str:literal, $arg:tt) => {{
+  ($lvl:expr, $static_str:literal, $arg:expr) => {{
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, callsite::Callsite, clone_sender};
       use once_cell::sync::Lazy;
@@ -110,7 +110,7 @@ macro_rules! try_log {
     }
   }};
 
-  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt) => {{
+  ($lvl:expr, $static_str:literal, $arg1:expr, $arg2:expr) => {{
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, callsite::Callsite, clone_sender};
       use once_cell::sync::Lazy;
@@ -136,7 +136,7 @@ macro_rules! try_log {
     }
   }};
 
-  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt) => {{
+  ($lvl:expr, $static_str:literal, $arg1:expr, $arg2:expr, $arg3:expr) => {{
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, callsite::Callsite, clone_sender};
       use once_cell::sync::Lazy;
@@ -163,7 +163,7 @@ macro_rules! try_log {
     }
   }};
 
-  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt) => {{
+  ($lvl:expr, $static_str:literal, $arg1:expr, $arg2:expr, $arg3:expr, $arg4:expr) => {{
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, callsite::Callsite, clone_sender};
       use once_cell::sync::Lazy;
@@ -191,7 +191,7 @@ macro_rules! try_log {
     }
   }};
 
-  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt) => {{
+  ($lvl:expr, $static_str:literal, $arg1:expr, $arg2:expr, $arg3:expr, $arg4:expr, $arg5:expr) => {{
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, callsite::Callsite, clone_sender};
       use once_cell::sync::Lazy;
@@ -220,7 +220,7 @@ macro_rules! try_log {
     }
   }};
 
-  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt, $arg6:tt) => {{
+  ($lvl:expr, $static_str:literal, $arg1:expr, $arg2:expr, $arg3:expr, $arg4:expr, $arg5:expr, $arg6:expr) => {{
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, callsite::Callsite, clone_sender};
       use once_cell::sync::Lazy;
@@ -250,7 +250,7 @@ macro_rules! try_log {
     }
   }};
 
-  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt, $arg6:tt, $arg7:tt) => {{
+  ($lvl:expr, $static_str:literal, $arg1:expr, $arg2:expr, $arg3:expr, $arg4:expr, $arg5:expr, $arg6:expr, $arg7:expr) => {{
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, callsite::Callsite, clone_sender};
       use once_cell::sync::Lazy;
@@ -281,7 +281,7 @@ macro_rules! try_log {
     }
   }};
 
-  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt, $arg6:tt, $arg7:tt, $arg8:tt) => {{
+  ($lvl:expr, $static_str:literal, $arg1:expr, $arg2:expr, $arg3:expr, $arg4:expr, $arg5:expr, $arg6:expr, $arg7:expr, $arg8:expr) => {{
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, callsite::Callsite, clone_sender};
       use once_cell::sync::Lazy;
@@ -313,7 +313,7 @@ macro_rules! try_log {
     }
   }};
 
-  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt, $arg6:tt, $arg7:tt, $arg8:tt, $arg9:tt) => {{
+  ($lvl:expr, $static_str:literal, $arg1:expr, $arg2:expr, $arg3:expr, $arg4:expr, $arg5:expr, $arg6:expr, $arg7:expr, $arg8:expr, $arg9:expr) => {{
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, callsite::Callsite, clone_sender};
       use once_cell::sync::Lazy;
@@ -346,7 +346,7 @@ macro_rules! try_log {
     }
   }};
 
-  ($lvl:expr, $static_str:literal, $arg1:tt, $arg2:tt, $arg3:tt, $arg4:tt, $arg5:tt, $arg6:tt, $arg7:tt, $arg8:tt, $arg9:tt, $arg10:tt) => {{
+  ($lvl:expr, $static_str:literal, $arg1:expr, $arg2:expr, $arg3:expr, $arg4:expr, $arg5:expr, $arg6:expr, $arg7:expr, $arg8:expr, $arg9:expr, $arg10:expr) => {{
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, callsite::Callsite, clone_sender};
       use once_cell::sync::Lazy;
