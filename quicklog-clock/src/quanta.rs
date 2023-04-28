@@ -36,7 +36,7 @@ impl Clock for QuantaClock {
 
     fn compute_system_time_from_instant(
         &self,
-        instant: &Instant,
+        instant: Instant,
     ) -> Result<DateTime<Utc>, OutOfRangeError> {
         let elapsed_time = instant.duration_since(self.start_instant);
         let chrono_duration = Duration::from_std(elapsed_time);

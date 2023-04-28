@@ -22,7 +22,7 @@
 //! // simulate flush thread
 //! let flush_thread = thread::spawn(move || {
 //!     // some code to flush log lines
-//!     let actual_system_time = clock.compute_system_time_from_instant(&some_log_line_instant);
+//!     let actual_system_time = clock.compute_system_time_from_instant(some_log_line_instant);
 //! });
 //!
 //! # flush_thread.join();
@@ -39,6 +39,6 @@ pub trait Clock {
     /// Returns system time from TSC time
     fn compute_system_time_from_instant(
         &self,
-        instant: &Instant,
+        instant: Instant,
     ) -> Result<DateTime<Utc>, OutOfRangeError>;
 }

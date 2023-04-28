@@ -28,7 +28,7 @@
 //!
 //! ## Example Usage
 //!
-//! ```norun
+//! ```ignore
 //! use std::thread;
 //!
 //! use quicklog::{info, flush};
@@ -75,10 +75,10 @@
 //!
 //! ### Example
 //!
-//! ```norun
+//! ```ignore
 //! struct SomeClock;
 //!
-//! impl Clock for SomeClock { /* impl */ }
+//! impl Clock for SomeClock { /* impl methods */ }
 //!
 //! fn main() {
 //!     with_clock!(SomeClock::new());
@@ -97,7 +97,7 @@
 //!
 //! ### Example
 //!
-//! ```norun
+//! ```ignore
 //! use quicklog_flush::file_flusher::FileFlusher;
 //!
 //! fn main() {
@@ -208,7 +208,9 @@ impl Log for Quicklog {
                 Ok((time_logged, disp)) => {
                     let log_line = format!(
                         "[{:?}]{}\n",
-                        self.clock.compute_system_time_from_instant(&time_logged),
+                        self.clock
+                            .compute_system_time_from_instant(time_logged)
+                            .expect("Unable to get time from instant"),
                         disp
                     );
                     self.flusher.flush(log_line);
@@ -230,5 +232,140 @@ impl Log for Quicklog {
             Ok(_) => Ok(()),
             Err(err) => Err(err),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{debug, error, info, trace, warn};
+
+    #[derive(Clone, Debug)]
+    struct Something {
+        some_str: &'static str,
+    }
+
+    #[test]
+    fn has_all_levels() {
+        trace!("Hello world {}", "Another");
+        debug!("Hello world {}", "Another");
+        info!("Hello world {}", "Another");
+        warn!("Hello world {}", "Another");
+        error!("Hello world {}", "Another");
+    }
+
+    #[test]
+    fn works_in_closure() {
+        let s1 = Something {
+            some_str: "Hello world 1",
+        };
+        let s2 = Something {
+            some_str: "Hello world 2",
+        };
+
+        let f = || {
+            info!("Hello world {:?} {:?}", s1, s2);
+        };
+
+        f();
+    }
+
+    #[test]
+    fn works_with_attributes() {
+        let s1 = Something {
+            some_str: "Hello world 1",
+        };
+        let s2 = Something {
+            some_str: "Hello world 2",
+        };
+
+        info!("hello world {:?} {:?}", s1.some_str, s2.some_str);
+    }
+
+    #[test]
+    fn works_with_box_ref() {
+        let s1 = Box::new(Something {
+            some_str: "Hello world 1",
+        });
+        let s2 = Box::new(Something {
+            some_str: "Hello world 2",
+        });
+
+        info!("hello world {:?} {:?}", s1.as_ref(), s2.as_ref());
+    }
+
+    #[test]
+    fn works_with_move() {
+        let s1 = Something {
+            some_str: "Hello world 1",
+        };
+        let s2 = Something {
+            some_str: "Hello world 2",
+        };
+
+        info!("hello world {:?} {:?}", s1, s2);
+    }
+
+    #[test]
+    fn works_with_references() {
+        let s1 = Something {
+            some_str: "Hello world 1",
+        };
+        let s2 = Something {
+            some_str: "Hello world 2",
+        };
+
+        info!("hello world {:?} {:?}", &s1, &s2);
+    }
+
+    fn log_reference_helper(thing: &Something, thing2: &Something) {
+        info!("hello world {:?} {:?}", thing, thing2);
+    }
+
+    #[test]
+    fn works_with_ref_lifetime_inside_fn() {
+        let s1 = Something {
+            some_str: "Hello world 1",
+        };
+        let s2 = Something {
+            some_str: "Hello world 2",
+        };
+
+        log_reference_helper(&s2, &s1);
+    }
+
+    struct A {
+        price: u64,
+        symbol: &'static str,
+        exch_id: u64,
+    }
+
+    impl A {
+        fn get_price(&self) -> u64 {
+            self.price
+        }
+
+        fn get_exch_id(&self) -> u64 {
+            self.exch_id
+        }
+
+        fn get_symbol(&self) -> &'static str {
+            self.symbol
+        }
+    }
+
+    #[test]
+    fn works_with_fn_return_val() {
+        let a = A {
+            price: 1_521_523,
+            symbol: "SomeSymbol",
+            exch_id: 642_153_768,
+        };
+
+        info!(
+            "A: price: {} symbol: {} exch_id: {}",
+            a.get_price(),
+            a.get_symbol(),
+            a.get_exch_id()
+        );
     }
 }
