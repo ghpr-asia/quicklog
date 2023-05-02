@@ -116,7 +116,7 @@ macro_rules! try_log {
         use once_cell::sync::Lazy;
         static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
 
-        let ($([<$($field)*>]),*) = ($($args.to_owned()),*);
+        let ($([<$($field)*>]),*) = ($(($args).to_owned()),*);
 
         let log_line = lazy_format::make_lazy_format!(|f| {
           write!(f, concat!("[{}]\t", $static_str), $lvl, $([<$($field)*>]),*)

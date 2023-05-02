@@ -368,4 +368,25 @@ mod tests {
             a.get_exch_id()
         );
     }
+
+    fn log_ref_and_move(s1: Something, s2r: &Something) {
+        info!("Hello world {:?} {:?}", s1, s2r);
+    }
+
+    #[test]
+    fn works_with_ref_and_move() {
+        let s1 = Something {
+            some_str: "Hello world 1",
+        };
+        let s2 = Something {
+            some_str: "Hello world 2",
+        };
+
+        log_ref_and_move(s1, &s2);
+        let s3 = Something {
+            some_str: "Hello world 3",
+        };
+
+        info!("ref: {:?}, move: {:?}", &s2, s3);
+    }
 }
