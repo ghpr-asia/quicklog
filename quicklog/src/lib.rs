@@ -63,6 +63,18 @@
 //! * [`with_clock!`]
 //! * [`with_flush!`]
 //!
+//! ## Macro prefix for eager evaluation
+//!
+//! There are two prefixes you can use for variables, `%` and `?`. This works the same
+//! way as `tracing`, where `%` eagerly evaluates an object that implements `Display`
+//! and `?` eagerly evaluates an object that implements `Debug`.
+//!
+//! ```ignore
+//! fn main {
+//!     info!("eager display {}; eager debug {}", %display_struct, ?debug_struct);
+//! }
+//! ```
+//!
 //! # Components
 //!
 //! ## quicklog-clock
@@ -244,6 +256,12 @@ mod tests {
         some_str: &'static str,
     }
 
+    impl std::fmt::Display for Something {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Something display: {}", self.some_str)
+        }
+    }
+
     #[test]
     fn has_all_levels() {
         trace!("Hello world {}", "Another");
@@ -263,7 +281,7 @@ mod tests {
         };
 
         let f = || {
-            info!("Hello world {:?} {:?}", s1, s2);
+            info!("Hello world {} {:?}", s1, s2);
         };
 
         f();
@@ -278,7 +296,7 @@ mod tests {
             some_str: "Hello world 2",
         };
 
-        info!("hello world {:?} {:?}", s1.some_str, s2.some_str);
+        info!("hello world {} {:?}", s1.some_str, s2.some_str);
     }
 
     #[test]
@@ -290,7 +308,7 @@ mod tests {
             some_str: "Hello world 2",
         });
 
-        info!("hello world {:?} {:?}", s1.as_ref(), s2.as_ref());
+        info!("hello world {} {:?}", s1.as_ref(), s2.as_ref());
     }
 
     #[test]
@@ -302,7 +320,7 @@ mod tests {
             some_str: "Hello world 2",
         };
 
-        info!("hello world {:?} {:?}", s1, s2);
+        info!("hello world {} {:?}", s1, s2);
     }
 
     #[test]
@@ -314,11 +332,11 @@ mod tests {
             some_str: "Hello world 2",
         };
 
-        info!("hello world {:?} {:?}", &s1, &s2);
+        info!("hello world {} {:?}", &s1, &s2);
     }
 
     fn log_reference_helper(thing: &Something, thing2: &Something) {
-        info!("hello world {:?} {:?}", thing, thing2);
+        info!("hello world {} {:?}", thing, thing2);
     }
 
     #[test]
@@ -364,13 +382,13 @@ mod tests {
         info!(
             "A: price: {} symbol: {} exch_id: {}",
             a.get_price(),
-            a.get_symbol(),
-            a.get_exch_id()
+            ?a.get_symbol(),
+            %a.get_exch_id()
         );
     }
 
     fn log_ref_and_move(s1: Something, s2r: &Something) {
-        info!("Hello world {:?} {:?}", s1, s2r);
+        info!("Hello world {} {:?}", s1, s2r);
     }
 
     #[test]
@@ -387,6 +405,19 @@ mod tests {
             some_str: "Hello world 3",
         };
 
-        info!("ref: {:?}, move: {:?}", &s2, s3);
+        info!("ref: {:?}, move: {}", &s2, s3);
+    }
+
+    #[test]
+    fn works_with_eager_debug_display_hints() {
+        let s1 = Something {
+            some_str: "Hello world 1",
+        };
+        let s2 = Something {
+            some_str: "Hello world 2",
+        };
+        let some_str = "hello world";
+
+        info!("display {}; eager debug {}; eager display {}, eager display {}", some_str, ?s2, %s1, %s1.some_str);
     }
 }

@@ -36,7 +36,7 @@ macro_rules! log {
     $crate::try_log!($lvl, $static_str).unwrap();
   };
 
-  ($lvl:expr, $static_str:literal, $($args:tt)+) => {
+  ($lvl:expr, $static_str:literal, $($args:tt)*) => {
     $crate::try_log!($lvl, $static_str, $($args)+).unwrap();
   };
 }
@@ -97,19 +97,50 @@ macro_rules! try_log {
     }
   };
 
+  // === entry
   // starts recursion on normal arguments to be passed into log
-  ($lvl:expr, $static_str:literal, $($args:expr),*) => {
-    $crate::try_log!($lvl, $static_str, ($($args),*) @ (x) () $($args)*)
+  ($lvl:expr, $static_str:literal, $($args:tt)*) => {
+    $crate::try_log!($lvl, $static_str @@ {{}} @ (x) () $($args)*)
   };
 
+  // === recursive cases
   // recurses through the prefixes, adding a new 'x' character at each level and creating the idents
   // this recurses until `$($rest)*` is empty
-  ($lvl:expr, $static_str:literal, ($($args:expr),*) @ ($($prefix:tt)*) ($($past:tt)*) $next:tt $($rest:tt)*) => {
-    $crate::try_log!($lvl, $static_str, ($($args),*) @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
+  //
+  // there are 3 cases right now to match for the recursion
+  // 1. '%' prefix - %$next: eagerly format object that implements Display
+  // 2. '?' prefix - ?$next: eagerly format object that implements Debug
+  // 3. no prefix  -  $next: clone entire object
+
+  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $next:expr, $($rest:tt)*) => {
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),* ,$next }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
   };
 
-  // base case: perform the logging
-  ($lvl:expr, $static_str:literal, ($($args:expr),*) @ ($($prefix:tt)*) ($([$($field:tt)*])*)) => {
+  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) %$next:expr, $($rest:tt)*) => {
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),*, format!("{}", $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
+  };
+
+  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) ?$next:expr, $($rest:tt)*) => {
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),*, format!("{:?}", $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
+  };
+
+  // last recursive case - no more $($rest)* to recurse over
+
+  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $next:expr) => {
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),* ,$next }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
+  };
+
+  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) %$next:expr) => {
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),*, format!("{}", $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
+  };
+
+  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) ?$next:expr) => {
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),*, format!("{:?}", $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
+  };
+
+  // === base case
+  // perform the logging by owning arguments
+  ($lvl:expr, $static_str:literal @@ {{ $($args:expr),* }} @ ($($prefix:tt)*) ($([$($field:tt)*])*)) => {
     paste::paste! {{
       if $crate::is_level_enabled!($lvl) {
         use $crate::{Log, callsite::Callsite, clone_sender, make_container};
@@ -184,33 +215,33 @@ macro_rules! flush_with_timeout {
 #[macro_export]
 macro_rules! trace {
   {$static_str:literal} => ( $crate::log!($crate::level::Level::Trace, $static_str) );
-  {$static_str:literal, $($args:tt)+} => ( $crate::log!($crate::level::Level::Trace, $static_str, $($args)*) );
+  {$static_str:literal, $($args:tt)*} => ( $crate::log!($crate::level::Level::Trace, $static_str, $($args)*) );
 }
 
 /// Debug level log
 #[macro_export]
 macro_rules! debug {
   {$static_str:literal} => ( $crate::log!($crate::level::Level::Debug, $static_str) );
-  {$static_str:literal, $($args:tt)+} => ( $crate::log!($crate::level::Level::Debug, $static_str, $($args)*) );
+  {$static_str:literal, $($args:tt)*} => ( $crate::log!($crate::level::Level::Debug, $static_str, $($args)*) );
 }
 
 /// Info level log
 #[macro_export]
 macro_rules! info {
   {$static_str:literal} => ( $crate::log!($crate::level::Level::Info, $static_str) );
-  {$static_str:literal, $($args:tt)+} => ( $crate::log!($crate::level::Level::Info, $static_str, $($args)*) );
+  {$static_str:literal, $($args:tt)*} => ( $crate::log!($crate::level::Level::Info, $static_str, $($args)*) );
 }
 
 /// Warn level log
 #[macro_export]
 macro_rules! warn {
   {$static_str:literal} => ( $crate::log!($crate::level::Level::Warn, $static_str) );
-  {$static_str:literal, $($args:tt)+} => ( $crate::log!($crate::level::Level::Warn, $static_str, $($args)*) );
+  {$static_str:literal, $($args:tt)*} => ( $crate::log!($crate::level::Level::Warn, $static_str, $($args)*) );
 }
 
 /// Error level log
 #[macro_export]
 macro_rules! error {
   {$static_str:literal} => ( $crate::log!($crate::level::Level::Error, $static_str) );
-  {$static_str:literal, $($args:tt)+} => ( $crate::log!($crate::level::Level::Error, $static_str, $($args)*) );
+  {$static_str:literal, $($args:tt)*} => ( $crate::log!($crate::level::Level::Error, $static_str, $($args)*) );
 }
