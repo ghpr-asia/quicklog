@@ -75,6 +75,23 @@
 //! }
 //! ```
 //!
+//! ## Structured fields
+//!
+//! Structured fields in log lines can be specified using `field_name = field_value`
+//! syntax. `field_name` can be a literal or a bunch of idents. This can also
+//! be used in combination with '%' and '?' prefix on args to eagerly evaluate
+//! expressions into format strings.
+//!
+//! ```ignore
+//! fn main {
+//!     let value = 10;
+//!     info!("hello world; {}; {}", "some string field" = true, "value is" = %value);
+//!     // output: "hello world; some string field=true; value is=10"
+//!     info!("hello world {} {} {}", question.tricky = true, question.answer = ?value, question.val = &value);
+//!     // output: "hello world question.tricky=true question.answer=10 question.val=10"
+//! }
+//! ```
+//!
 //! # Components
 //!
 //! ## quicklog-clock
@@ -256,6 +273,11 @@ mod tests {
         some_str: &'static str,
     }
 
+    #[derive(Clone, Debug)]
+    struct NestedSomething {
+        thing: Something,
+    }
+
     impl std::fmt::Display for Something {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "Something display: {}", self.some_str)
@@ -295,7 +317,13 @@ mod tests {
         let s2 = Something {
             some_str: "Hello world 2",
         };
+        let nested = NestedSomething {
+            thing: Something {
+                some_str: "hello nested",
+            },
+        };
 
+        info!("log one attr {}", nested.thing.some_str);
         info!("hello world {} {:?}", s1.some_str, s2.some_str);
     }
 
@@ -308,7 +336,8 @@ mod tests {
             some_str: "Hello world 2",
         });
 
-        info!("hello world {} {:?}", s1.as_ref(), s2.as_ref());
+        info!("log single box ref {}", s1.as_ref());
+        info!("log multi box ref {} {:?}", s1.as_ref(), s2.as_ref());
     }
 
     #[test]
@@ -319,8 +348,12 @@ mod tests {
         let s2 = Something {
             some_str: "Hello world 2",
         };
+        let s3 = Something {
+            some_str: "Hello world 3",
+        };
 
-        info!("hello world {} {:?}", s1, s2);
+        info!("log multi move {} {:?}", s1, s2);
+        info!("log single move {}", s3);
     }
 
     #[test]
@@ -332,11 +365,16 @@ mod tests {
             some_str: "Hello world 2",
         };
 
-        info!("hello world {} {:?}", &s1, &s2);
+        info!("log single ref: {}", &s1);
+        info!("log multi ref: {} {:?}", &s1, &s2);
     }
 
-    fn log_reference_helper(thing: &Something, thing2: &Something) {
-        info!("hello world {} {:?}", thing, thing2);
+    fn log_multi_ref_helper(thing: &Something, thing2: &Something) {
+        info!("log multi ref {} {:?}", thing, thing2);
+    }
+
+    fn log_ref_helper(thing: &Something) {
+        info!("log single ref: {}", thing)
     }
 
     #[test]
@@ -348,7 +386,8 @@ mod tests {
             some_str: "Hello world 2",
         };
 
-        log_reference_helper(&s2, &s1);
+        log_ref_helper(&s1);
+        log_multi_ref_helper(&s2, &s1);
     }
 
     struct A {
@@ -385,6 +424,7 @@ mod tests {
             ?a.get_symbol(),
             %a.get_exch_id()
         );
+        info!("single call {}", a.get_price());
     }
 
     fn log_ref_and_move(s1: Something, s2r: &Something) {
@@ -404,8 +444,13 @@ mod tests {
         let s3 = Something {
             some_str: "Hello world 3",
         };
+        let s4 = Something {
+            some_str: "Hello world 4",
+        };
 
         info!("ref: {:?}, move: {}", &s2, s3);
+        info!("single ref: {}", &s2);
+        info!("single move: {}", s4);
     }
 
     #[test]
@@ -418,6 +463,36 @@ mod tests {
         };
         let some_str = "hello world";
 
-        info!("display {}; eager debug {}; eager display {}, eager display {}", some_str, ?s2, %s1, %s1.some_str);
+        info!("display {}; eager debug {}; eager display {}, eager display inner field {}", some_str, ?s2, %s1, %s1.some_str);
+        info!("single eager display: {}", %s2);
+    }
+
+    #[test]
+    fn works_with_fields() {
+        let s1 = Something {
+            some_str: "Hello world 1",
+        };
+        let s2 = Something {
+            some_str: "Hello world 1",
+        };
+        let s3 = Something {
+            some_str: "Hello world 3",
+        };
+
+        info!("pass by ref {}", some_struct.field1.innerfield.inner = &s1);
+        info!("pass by move {}", some.inner.field = s3);
+        info!(
+            "non-nested field: {}, nested field: {}, pure lit: {}",
+            borrow_s2_field = %s2,
+            some_inner_field.inner.field.inner.arg = "hello world",
+            "pure lit arg" = "another lit arg"
+        );
+        info!(
+            "non-nested field: {}, reuse debug: {}, nested field: {}, able to reuse after pass by ref: {}",
+            "pure lit arg" = "another lit arg",
+            "able to reuse s1" = ?s1,
+            some_inner_field.some.field.included = "hello world",
+            able.to.reuse.s2.borrow = &s2
+        );
     }
 }

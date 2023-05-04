@@ -22,8 +22,12 @@ Tell people where they can go to for help. It can be any combination of an issue
 
 ## Roadmap
 
+- [] Write better unit tests that actually check output after being flushed
+- [] Abstract out channel and possibly replace it with a statically allocated mpsc
+- [] Try to remove nested `lazy_format` in recursion
+- [] Check number of copies of data made in each log line and possibly reduce it
 - [] Review uses of unsafe code
-- [] Remove all uses of unwrap
+- [] Remove all non-essential uses of unwrap
 - [] Benchmark multi-threaded performance
 - [] Statically assert that strings inside Level and LevelFilter are the same size
 
