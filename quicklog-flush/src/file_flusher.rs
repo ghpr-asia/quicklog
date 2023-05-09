@@ -14,7 +14,7 @@ impl FileFlusher {
 }
 
 impl Flush for FileFlusher {
-    fn flush(&self, display: String) {
+    fn flush(&mut self, display: String) {
         match OpenOptions::new().create(true).append(true).open(self.0) {
             Ok(file) => {
                 let mut writer = LineWriter::new(file);

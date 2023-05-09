@@ -15,7 +15,7 @@ impl Default for StdoutFlusher {
 }
 
 impl Flush for StdoutFlusher {
-    fn flush(&self, display: String) {
+    fn flush(&mut self, display: String) {
         print!("{}", display);
     }
 }

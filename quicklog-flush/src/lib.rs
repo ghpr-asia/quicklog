@@ -14,7 +14,7 @@
 //! # struct Quicklog;
 //! impl Quicklog {
 //!     fn flush_logger(&mut self) {
-//!         # let flusher = StdoutFlusher::new();
+//!         # let mut flusher = StdoutFlusher::new();
 //!         # let mut queue = VecDeque::new();
 //!         # queue.push_back(String::from("Hello, world!"));
 //!         while let Some(item) = queue.pop_front() {
@@ -39,5 +39,5 @@ pub mod stdout_flusher;
 pub trait Flush {
     /// Handles a string from another thread, and performs stateful
     /// operations such as writing to a file or to stdout
-    fn flush(&self, display: String);
+    fn flush(&mut self, display: String);
 }

@@ -160,6 +160,8 @@ pub type Intermediate = (Instant, Container<dyn Display>);
 #[doc(hidden)]
 static mut LOGGER: Lazy<Quicklog> = Lazy::new(Quicklog::default);
 
+pub type RecvResult = Result<(), RecvTimeoutError>;
+pub type SendResult = Result<(), SendError<Intermediate>>;
 /// Channel handles the intermediate communication between senders and receivers
 /// Each `MacroCallsite` receives its own channel
 #[doc(hidden)]
@@ -168,7 +170,7 @@ static mut CHANNEL: Lazy<(Sender<Intermediate>, Receiver<Intermediate>)> = Lazy:
 /// Log is the base trait that Quicklog will implement.
 /// Flushing and formatting is deferred while logging.
 pub trait Log: Send + Sync {
-    fn flush(&self, timeout: Option<Duration>) -> Result<(), RecvTimeoutError>;
+    fn flush(&mut self, timeout: Option<Duration>) -> Result<(), RecvTimeoutError>;
     fn log(
         &self,
         callsite: &Callsite,
@@ -200,10 +202,12 @@ pub struct Quicklog {
 }
 
 impl Quicklog {
+    #[doc(hidden)]
     pub fn use_flush(&mut self, flush: Container<dyn Flush>) {
         self.flusher = flush
     }
 
+    #[doc(hidden)]
     pub fn use_clock(&mut self, clock: Container<dyn Clock>) {
         self.clock = clock
     }
@@ -224,7 +228,7 @@ unsafe impl Send for Quicklog {}
 unsafe impl Sync for Quicklog {}
 
 impl Log for Quicklog {
-    fn flush(&self, maybe_timeout: Option<Duration>) -> Result<(), RecvTimeoutError> {
+    fn flush(&mut self, maybe_timeout: Option<Duration>) -> RecvResult {
         /// Defines timeout duration we wait before we timeout when flushing from
         /// the channel's receiver
         const DEFAULT_TIMEOUT_DURATION: Duration = Duration::from_micros(1);
@@ -252,11 +256,7 @@ impl Log for Quicklog {
         }
     }
 
-    fn log(
-        &self,
-        callsite: &Callsite,
-        display: Container<dyn Display>,
-    ) -> Result<(), SendError<Intermediate>> {
+    fn log(&self, callsite: &Callsite, display: Container<dyn Display>) -> SendResult {
         match callsite.sender.send((self.clock.get_instant(), display)) {
             Ok(_) => Ok(()),
             Err(err) => Err(err),
@@ -266,11 +266,89 @@ impl Log for Quicklog {
 
 #[cfg(test)]
 mod tests {
-    use crate::{debug, error, info, trace, warn};
+    use std::sync::Mutex;
+
+    use quicklog_flush::Flush;
+
+    use crate::{debug, error, flush, info, trace, warn};
+
+    struct VecFlusher {
+        pub vec: &'static mut Vec<String>,
+    }
+
+    impl VecFlusher {
+        pub fn new(vec: &'static mut Vec<String>) -> VecFlusher {
+            VecFlusher { vec }
+        }
+    }
+
+    impl Flush for VecFlusher {
+        fn flush(&mut self, display: String) {
+            self.vec.push(display);
+        }
+    }
 
     #[derive(Clone, Debug)]
     struct Something {
         some_str: &'static str,
+    }
+
+    fn message_from_log_line(log_line: &str) -> String {
+        log_line
+            .split('\t')
+            .last()
+            .map(|s| s.chars().take(s.len() - 1).collect::<String>())
+            .unwrap()
+    }
+
+    fn message_and_level_from_log_line(log_line: &str) -> String {
+        let timestamp_end_idx = log_line.find(']').unwrap() + 1;
+        log_line
+            .chars()
+            .skip(timestamp_end_idx)
+            .take(log_line.len() - timestamp_end_idx - 1)
+            .collect::<String>()
+    }
+
+    // tests need to be single threaded, this mutex ensures
+    // tests are only executed in single threaded mode
+    static TEST_LOCK: Mutex<usize> = Mutex::new(0);
+
+    macro_rules! setup {
+        () => {
+            // acquire lock within scope of each test
+            let _guard = TEST_LOCK.lock().unwrap();
+            static mut VEC: Vec<String> = Vec::new();
+            let vec_flusher = unsafe { VecFlusher::new(&mut VEC) };
+            crate::logger().use_flush(Box::new(vec_flusher));
+        };
+    }
+
+    fn from_log_lines<F: Fn(&str) -> String>(lines: &[String], f: F) -> Vec<String> {
+        lines.iter().map(|s| f(s.as_str())).collect::<Vec<_>>()
+    }
+
+    #[doc(hidden)]
+    macro_rules! helper_assert {
+        (@ $f:expr, $format_string:expr, $check_f:expr) => {
+            $f;
+            flush!();
+            assert_eq!(
+                unsafe { from_log_lines(&VEC, $check_f) },
+                vec![$format_string]
+            );
+            unsafe {
+                let _ = &VEC.clear();
+            }
+        };
+    }
+
+    macro_rules! assert_message_equal {
+        ($f:expr, $format_string:expr) => { helper_assert!(@ $f, $format_string, message_from_log_line) };
+    }
+
+    macro_rules! assert_message_with_level_equal {
+        ($f:expr, $format_string:expr) => { helper_assert!(@ $f, $format_string, message_and_level_from_log_line) };
     }
 
     #[derive(Clone, Debug)]
@@ -286,15 +364,34 @@ mod tests {
 
     #[test]
     fn has_all_levels() {
-        trace!("Hello world {}", "Another");
-        debug!("Hello world {}", "Another");
-        info!("Hello world {}", "Another");
-        warn!("Hello world {}", "Another");
-        error!("Hello world {}", "Another");
+        setup!();
+
+        assert_message_with_level_equal!(
+            trace!("Hello world {}", "Another"),
+            format!("[TRACE]\tHello world {}", "Another")
+        );
+        assert_message_with_level_equal!(
+            debug!("Hello world {}", "Another"),
+            format!("[DEBUG]\tHello world {}", "Another")
+        );
+        assert_message_with_level_equal!(
+            info!("Hello world {}", "Another"),
+            format!("[INFO]\tHello world {}", "Another")
+        );
+        assert_message_with_level_equal!(
+            warn!("Hello world {}", "Another"),
+            format!("[WARN]\tHello world {}", "Another")
+        );
+        assert_message_with_level_equal!(
+            error!("Hello world {}", "Another"),
+            format!("[ERROR]\tHello world {}", "Another")
+        );
     }
 
     #[test]
     fn works_in_closure() {
+        setup!();
+
         let s1 = Something {
             some_str: "Hello world 1",
         };
@@ -303,7 +400,10 @@ mod tests {
         };
 
         let f = || {
-            info!("Hello world {} {:?}", s1, s2);
+            assert_message_equal!(
+                info!("Hello world {} {:?}", s1, s2),
+                format!("Hello world {} {:?}", s1, s2)
+            );
         };
 
         f();
@@ -311,6 +411,8 @@ mod tests {
 
     #[test]
     fn works_with_attributes() {
+        setup!();
+
         let s1 = Something {
             some_str: "Hello world 1",
         };
@@ -323,12 +425,20 @@ mod tests {
             },
         };
 
-        info!("log one attr {}", nested.thing.some_str);
-        info!("hello world {} {:?}", s1.some_str, s2.some_str);
+        assert_message_equal!(
+            info!("log one attr {}", nested.thing.some_str),
+            format!("log one attr {}", nested.thing.some_str)
+        );
+        assert_message_equal!(
+            info!("hello world {} {:?}", s1.some_str, s2.some_str),
+            format!("hello world {} {:?}", s1.some_str, s2.some_str)
+        );
     }
 
     #[test]
     fn works_with_box_ref() {
+        setup!();
+
         let s1 = Box::new(Something {
             some_str: "Hello world 1",
         });
@@ -336,12 +446,20 @@ mod tests {
             some_str: "Hello world 2",
         });
 
-        info!("log single box ref {}", s1.as_ref());
-        info!("log multi box ref {} {:?}", s1.as_ref(), s2.as_ref());
+        assert_message_equal!(
+            info!("log single box ref {}", s1.as_ref()),
+            format!("log single box ref {}", s1.as_ref())
+        );
+        assert_message_equal!(
+            info!("log multi box ref {} {:?}", s1.as_ref(), s2.as_ref()),
+            format!("log multi box ref {} {:?}", s1.as_ref(), s2.as_ref())
+        );
     }
 
     #[test]
     fn works_with_move() {
+        setup!();
+
         let s1 = Something {
             some_str: "Hello world 1",
         };
@@ -352,12 +470,20 @@ mod tests {
             some_str: "Hello world 3",
         };
 
-        info!("log multi move {} {:?}", s1, s2);
-        info!("log single move {}", s3);
+        assert_message_equal!(
+            info!("log multi move {} {:?}", s1, s2),
+            format!("log multi move {} {:?}", s1, s2)
+        );
+        assert_message_equal!(
+            info!("log single move {}", s3),
+            format!("log single move {}", s3)
+        );
     }
 
     #[test]
     fn works_with_references() {
+        setup!();
+
         let s1 = Something {
             some_str: "Hello world 1",
         };
@@ -365,8 +491,14 @@ mod tests {
             some_str: "Hello world 2",
         };
 
-        info!("log single ref: {}", &s1);
-        info!("log multi ref: {} {:?}", &s1, &s2);
+        assert_message_equal!(
+            info!("log single ref: {}", &s1),
+            format!("log single ref: {}", &s1)
+        );
+        assert_message_equal!(
+            info!("log multi ref: {} {:?}", &s1, &s2),
+            format!("log multi ref: {} {:?}", &s1, &s2)
+        );
     }
 
     fn log_multi_ref_helper(thing: &Something, thing2: &Something) {
@@ -379,6 +511,8 @@ mod tests {
 
     #[test]
     fn works_with_ref_lifetime_inside_fn() {
+        setup!();
+
         let s1 = Something {
             some_str: "Hello world 1",
         };
@@ -386,8 +520,11 @@ mod tests {
             some_str: "Hello world 2",
         };
 
-        log_ref_helper(&s1);
-        log_multi_ref_helper(&s2, &s1);
+        assert_message_equal!(log_ref_helper(&s1), format!("log single ref: {}", &s1));
+        assert_message_equal!(
+            log_multi_ref_helper(&s2, &s1),
+            format!("log multi ref {} {:?}", &s2, &s1)
+        );
     }
 
     struct A {
@@ -412,19 +549,32 @@ mod tests {
 
     #[test]
     fn works_with_fn_return_val() {
+        setup!();
+
         let a = A {
             price: 1_521_523,
             symbol: "SomeSymbol",
             exch_id: 642_153_768,
         };
 
-        info!(
-            "A: price: {} symbol: {} exch_id: {}",
-            a.get_price(),
-            ?a.get_symbol(),
-            %a.get_exch_id()
+        assert_message_equal!(
+            info!(
+                "A: price: {} symbol: {} exch_id: {}",
+                a.get_price(),
+                ?a.get_symbol(),
+                %a.get_exch_id()
+            ),
+            format!(
+                "A: price: {} symbol: \"{}\" exch_id: {:?}",
+                a.get_price(),
+                a.get_symbol(),
+                a.get_exch_id()
+            )
         );
-        info!("single call {}", a.get_price());
+        assert_message_equal!(
+            info!("single call {}", a.get_price()),
+            format!("single call {}", a.get_price())
+        );
     }
 
     fn log_ref_and_move(s1: Something, s2r: &Something) {
@@ -433,14 +583,20 @@ mod tests {
 
     #[test]
     fn works_with_ref_and_move() {
+        setup!();
+
         let s1 = Something {
             some_str: "Hello world 1",
         };
+        let s1_clone = s1.clone();
         let s2 = Something {
             some_str: "Hello world 2",
         };
 
-        log_ref_and_move(s1, &s2);
+        assert_message_equal!(
+            log_ref_and_move(s1, &s2),
+            format!("Hello world {} {:?}", s1_clone, &s2)
+        );
         let s3 = Something {
             some_str: "Hello world 3",
         };
@@ -448,13 +604,18 @@ mod tests {
             some_str: "Hello world 4",
         };
 
-        info!("ref: {:?}, move: {}", &s2, s3);
-        info!("single ref: {}", &s2);
-        info!("single move: {}", s4);
+        assert_message_equal!(
+            info!("ref: {:?}, move: {}", &s2, s3),
+            format!("ref: {:?}, move: {}", &s2, s3)
+        );
+        assert_message_equal!(info!("single ref: {}", &s2), format!("single ref: {}", &s2));
+        assert_message_equal!(info!("single move: {}", s4), format!("single move: {}", s4));
     }
 
     #[test]
     fn works_with_eager_debug_display_hints() {
+        setup!();
+
         let s1 = Something {
             some_str: "Hello world 1",
         };
@@ -463,12 +624,23 @@ mod tests {
         };
         let some_str = "hello world";
 
-        info!("display {}; eager debug {}; eager display {}, eager display inner field {}", some_str, ?s2, %s1, %s1.some_str);
-        info!("single eager display: {}", %s2);
+        assert_message_equal!(
+            info!("display {}; eager debug {}; eager display {}, eager display inner field {}", some_str, ?s2, %s1, %s1.some_str),
+            format!(
+                "display {}; eager debug {:?}; eager display {}, eager display inner field {}",
+                some_str, s2, s1, s1.some_str
+            )
+        );
+        assert_message_equal!(
+            info!("single eager display: {}", %s2),
+            format!("single eager display: {}", s2)
+        );
     }
 
     #[test]
     fn works_with_fields() {
+        setup!();
+
         let s1 = Something {
             some_str: "Hello world 1",
         };
@@ -478,21 +650,34 @@ mod tests {
         let s3 = Something {
             some_str: "Hello world 3",
         };
+        let s3_clone = s3.clone();
 
-        info!("pass by ref {}", some_struct.field1.innerfield.inner = &s1);
-        info!("pass by move {}", some.inner.field = s3);
-        info!(
-            "non-nested field: {}, nested field: {}, pure lit: {}",
-            borrow_s2_field = %s2,
-            some_inner_field.inner.field.inner.arg = "hello world",
-            "pure lit arg" = "another lit arg"
+        assert_message_equal!(
+            info!("pass by ref {}", some_struct.field1.innerfield.inner = &s1),
+            format!("pass by ref some_struct.field1.innerfield.inner={}", &s1)
         );
-        info!(
-            "non-nested field: {}, reuse debug: {}, nested field: {}, able to reuse after pass by ref: {}",
-            "pure lit arg" = "another lit arg",
-            "able to reuse s1" = ?s1,
-            some_inner_field.some.field.included = "hello world",
-            able.to.reuse.s2.borrow = &s2
+        assert_message_equal!(
+            info!("pass by move {}", some.inner.field = s3),
+            format!("pass by move some.inner.field={}", s3_clone)
+        );
+        assert_message_equal!(
+            info!(
+                "non-nested field: {}, nested field: {}, pure lit: {}",
+                borrow_s2_field = %s2,
+                some_inner_field.inner.field.inner.arg = "hello world",
+                "pure lit arg" = "another lit arg"
+            ),
+            format!("non-nested field: borrow_s2_field={}, nested field: some_inner_field.inner.field.inner.arg=hello world, pure lit: pure lit arg=another lit arg", &s2)
+        );
+        assert_message_equal!(
+            info!(
+                "pure lit: {}, reuse debug: {}, nested field: {}, able to reuse after pass by ref: {}",
+                "pure lit arg" = "another lit arg",
+                "able to reuse s1" = ?s1,
+                some_inner_field.some.field.included = "hello world",
+                able.to.reuse.s2.borrow = &s2
+            ),
+            format!("pure lit: pure lit arg=another lit arg, reuse debug: able to reuse s1={:?}, nested field: some_inner_field.some.field.included=hello world, able to reuse after pass by ref: able.to.reuse.s2.borrow={}", s1, &s2)
         );
     }
 }
