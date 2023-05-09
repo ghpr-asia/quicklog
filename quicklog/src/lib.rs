@@ -63,6 +63,28 @@
 //! * [`with_clock!`]
 //! * [`with_flush!`]
 //!
+//! ## Macro prefix for partial serialization
+//!
+//! To speed things up, if you are logging a large struct, there could be some small things
+//! you might not want to log. This functionality can be done through implementing the
+//! [`Serialize`] trait, where you can implement how to copy which parts of the struct.
+//!
+//! ```ignore
+//! struct SomeStruct {
+//!     num: i64
+//! }
+//!
+//! impl Serialize for SomeStruct {
+//!    fn encode(&self, write_buf: &'static mut [u8]) -> Store { /* some impl */}
+//!    fn buffer_size_required(&self) -> usize { /* some impl */}
+//! }
+//!
+//! fn main() {
+//!     let s = SomeStruct { num: 1_000_000 };
+//!     info!("some struct: {}", ^s);
+//! }
+//! ```
+//!
 //! ## Macro prefix for eager evaluation
 //!
 //! There are two prefixes you can use for variables, `%` and `?`. This works the same
@@ -135,6 +157,8 @@
 //!     flush!();
 //! }
 //! ```
+//!
+//! [`Serialize`]: serialize::Serialize
 
 use callsite::Callsite;
 use once_cell::sync::Lazy;
@@ -151,6 +175,7 @@ use quicklog_flush::{file_flusher::FileFlusher, Flush};
 pub mod callsite;
 pub mod level;
 pub mod macros;
+pub mod serialize;
 
 pub type Container<T> = Box<T>;
 
@@ -266,11 +291,15 @@ impl Log for Quicklog {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
+    use std::{str::from_utf8, sync::Mutex};
 
     use quicklog_flush::Flush;
 
-    use crate::{debug, error, flush, info, trace, warn};
+    use crate::{
+        debug, error, flush, info,
+        serialize::{Serialize, Store},
+        trace, warn,
+    };
 
     struct VecFlusher {
         pub vec: &'static mut Vec<String>,
@@ -678,6 +707,83 @@ mod tests {
                 able.to.reuse.s2.borrow = &s2
             ),
             format!("pure lit: pure lit arg=another lit arg, reuse debug: able to reuse s1={:?}, nested field: some_inner_field.some.field.included=hello world, able to reuse after pass by ref: able.to.reuse.s2.borrow={}", s1, &s2)
+        );
+    }
+
+    struct S {
+        symbol: String,
+    }
+
+    impl Serialize for S {
+        fn encode(&self, write_buf: &'static mut [u8]) -> Store {
+            fn decode(read_buf: &[u8]) -> String {
+                let x = from_utf8(read_buf).unwrap();
+                x.to_string()
+            }
+            write_buf.copy_from_slice(self.symbol.as_bytes());
+            Store::new(decode, write_buf)
+        }
+
+        fn buffer_size_required(&self) -> usize {
+            self.symbol.len()
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct BigStruct {
+        vec: [i32; 100],
+        some: &'static str,
+    }
+
+    impl Serialize for BigStruct {
+        fn encode(&self, write_buf: &'static mut [u8]) -> Store {
+            fn decode(buf: &[u8]) -> String {
+                let (mut _head, mut tail) = buf.split_at(0);
+                let mut vec = vec![];
+                for _ in 0..100 {
+                    (_head, tail) = tail.split_at(4);
+                    vec.push(i32::from_le_bytes(_head.try_into().unwrap()));
+                }
+                let s = from_utf8(tail).unwrap();
+                format!("vec: {:?}, str: {}", vec, s)
+            }
+
+            let (mut _head, mut tail) = write_buf.split_at_mut(0);
+            for i in 0..100 {
+                (_head, tail) = tail.split_at_mut(4);
+                _head.copy_from_slice(&self.vec[i].to_le_bytes())
+            }
+
+            tail.copy_from_slice(self.some.as_bytes());
+
+            Store::new(decode, write_buf)
+        }
+
+        fn buffer_size_required(&self) -> usize {
+            std::mem::size_of::<i32>() * 100 + self.some.len()
+        }
+    }
+
+    #[test]
+    fn works_with_serialize() {
+        setup!();
+
+        let s = S {
+            symbol: String::from("Hello"),
+        };
+        let bs = BigStruct {
+            vec: [1; 100],
+            some: "The quick brown fox jumps over the lazy dog",
+        };
+
+        assert_message_equal!(info!("s: {}", ^s), "s: Hello");
+        assert_message_equal!(
+            info!("bs: {}", ^bs),
+            format!(
+                "bs: vec: {:?}, str: {}",
+                vec![1; 100],
+                "The quick brown fox jumps over the lazy dog"
+            )
         );
     }
 }
