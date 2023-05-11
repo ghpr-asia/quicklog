@@ -165,7 +165,7 @@ use once_cell::sync::Lazy;
 use quanta::Instant;
 use std::{
     fmt::Display,
-    sync::mpsc::{channel, Receiver, RecvTimeoutError, SendError, Sender},
+    sync::mpsc::{channel, RecvTimeoutError, SendError},
     time::Duration,
 };
 
@@ -185,22 +185,21 @@ pub type Intermediate = (Instant, Container<dyn Display>);
 #[doc(hidden)]
 static mut LOGGER: Lazy<Quicklog> = Lazy::new(Quicklog::default);
 
-pub type RecvResult = Result<(), RecvTimeoutError>;
+pub type Sender = std::sync::mpsc::Sender<Intermediate>;
 pub type SendResult = Result<(), SendError<Intermediate>>;
+pub type Receiver = std::sync::mpsc::Receiver<Intermediate>;
+pub type RecvResult = Result<(), RecvTimeoutError>;
+
 /// Channel handles the intermediate communication between senders and receivers
 /// Each `MacroCallsite` receives its own channel
 #[doc(hidden)]
-static mut CHANNEL: Lazy<(Sender<Intermediate>, Receiver<Intermediate>)> = Lazy::new(channel);
+static mut CHANNEL: Lazy<(Sender, Receiver)> = Lazy::new(channel);
 
 /// Log is the base trait that Quicklog will implement.
 /// Flushing and formatting is deferred while logging.
 pub trait Log: Send + Sync {
-    fn flush(&mut self, timeout: Option<Duration>) -> Result<(), RecvTimeoutError>;
-    fn log(
-        &self,
-        callsite: &Callsite,
-        display: Container<dyn Display>,
-    ) -> Result<(), SendError<Intermediate>>;
+    fn flush(&mut self, timeout: Option<Duration>) -> RecvResult;
+    fn log(&self, callsite: &Callsite, display: Container<dyn Display>) -> SendResult;
 }
 
 /// Returns a mut reference to the globally static logger [`LOGGER`]
@@ -213,7 +212,7 @@ pub fn logger() -> &'static mut Quicklog {
 
 /// Makes a clone of the sender channel from static [`CHANNEL`]
 #[doc(hidden)]
-pub fn clone_sender() -> Sender<Intermediate> {
+pub fn clone_sender() -> Sender {
     unsafe { CHANNEL.0.clone() }
 }
 
@@ -256,11 +255,10 @@ impl Log for Quicklog {
     fn flush(&mut self, maybe_timeout: Option<Duration>) -> RecvResult {
         /// Defines timeout duration we wait before we timeout when flushing from
         /// the channel's receiver
-        const DEFAULT_TIMEOUT_DURATION: Duration = Duration::from_micros(1);
+        const DEFAULT_TIMEOUT_DURATION: Duration = Duration::from_millis(10);
         let timeout = maybe_timeout.unwrap_or(DEFAULT_TIMEOUT_DURATION);
 
-        // Flushes until we reach an error, timeout is not considered an error
-        // Since we simply reached the end of all the messages we wanted to log
+        // Flushes until we reach an error
         loop {
             match unsafe { CHANNEL.1.recv_timeout(timeout) } {
                 Ok((time_logged, disp)) => {
@@ -273,10 +271,7 @@ impl Log for Quicklog {
                     );
                     self.flusher.flush(log_line);
                 }
-                Err(err) => match err {
-                    RecvTimeoutError::Timeout => return Ok(()),
-                    RecvTimeoutError::Disconnected => return Err(RecvTimeoutError::Disconnected),
-                },
+                Err(err) => return Err(err),
             }
         }
     }
@@ -556,6 +551,7 @@ mod tests {
         );
     }
 
+    #[derive(Clone)]
     struct A {
         price: u64,
         symbol: &'static str,

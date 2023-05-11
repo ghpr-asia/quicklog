@@ -33,11 +33,11 @@ macro_rules! make_container {
 #[macro_export]
 macro_rules! log {
   ($lvl:expr, $static_str:literal) => {
-    $crate::try_log!($lvl, $static_str).unwrap()
+    $crate::try_log!($lvl, $static_str).unwrap_or(())
   };
 
   ($lvl:expr, $static_str:literal, $($args:tt)*) => {
-    $crate::try_log!($lvl, $static_str, $($args)*).unwrap()
+    $crate::try_log!($lvl, $static_str, $($args)*).unwrap_or(())
   };
 }
 
@@ -89,6 +89,7 @@ macro_rules! try_log {
         use once_cell::sync::Lazy;
         static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
 
+        // allow unused_parens for case with 1 single field
         #[allow(unused_parens)]
         let ($([<$($field)*>]),*) = ($(($args).to_owned()),*);
 
@@ -330,7 +331,7 @@ macro_rules! try_flush {
 #[macro_export]
 macro_rules! flush {
     () => {
-        $crate::try_flush!().unwrap();
+        $crate::try_flush!().unwrap_or(());
     };
 }
 
@@ -342,7 +343,7 @@ macro_rules! flush {
 #[macro_export]
 macro_rules! flush_with_timeout {
     ($timeout:expr) => {
-        $crate::try_flush_with_timeout!($timeout).unwrap();
+        $crate::try_flush_with_timeout!($timeout).unwrap_or(());
     };
 }
 
