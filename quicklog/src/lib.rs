@@ -160,12 +160,11 @@
 //!
 //! [`Serialize`]: serialize::Serialize
 
-use callsite::Callsite;
-use once_cell::sync::Lazy;
+use once_cell::unsync::Lazy;
 use quanta::Instant;
 use std::{
     fmt::Display,
-    sync::mpsc::{channel, RecvTimeoutError, SendError},
+    sync::mpsc::{sync_channel, RecvTimeoutError, SendError},
     time::Duration,
 };
 
@@ -185,21 +184,24 @@ pub type Intermediate = (Instant, Container<dyn Display>);
 #[doc(hidden)]
 static mut LOGGER: Lazy<Quicklog> = Lazy::new(Quicklog::default);
 
-pub type Sender = std::sync::mpsc::Sender<Intermediate>;
+pub type Sender = std::sync::mpsc::SyncSender<Intermediate>;
 pub type SendResult = Result<(), SendError<Intermediate>>;
 pub type Receiver = std::sync::mpsc::Receiver<Intermediate>;
 pub type RecvResult = Result<(), RecvTimeoutError>;
 
+// TODO: Allow capacity to be set through env var
+const MAX_CAPACITY: usize = 1_000_000;
+
 /// Channel handles the intermediate communication between senders and receivers
-/// Each `MacroCallsite` receives its own channel
+/// ! DANGER ! NOT THREAD-SAFE
 #[doc(hidden)]
-static mut CHANNEL: Lazy<(Sender, Receiver)> = Lazy::new(channel);
+static mut CHANNEL: Lazy<(Sender, Receiver)> = Lazy::new(|| sync_channel(MAX_CAPACITY));
 
 /// Log is the base trait that Quicklog will implement.
 /// Flushing and formatting is deferred while logging.
 pub trait Log: Send + Sync {
     fn flush(&mut self, timeout: Option<Duration>) -> RecvResult;
-    fn log(&self, callsite: &Callsite, display: Container<dyn Display>) -> SendResult;
+    fn log(&self, display: Container<dyn Display>) -> SendResult;
 }
 
 /// Returns a mut reference to the globally static logger [`LOGGER`]
@@ -210,16 +212,7 @@ pub fn logger() -> &'static mut Quicklog {
     unsafe { &mut LOGGER }
 }
 
-/// Makes a clone of the sender channel from static [`CHANNEL`]
-#[doc(hidden)]
-pub fn clone_sender() -> Sender {
-    unsafe { CHANNEL.0.clone() }
-}
-
-/// Quicklog implements the Log trait, as well as providing allow
-/// a `MacroCallsite` in order to get their own senders, which would then be used
-/// to send data onto the single receiver which is flushed when `flush()` is
-/// called on the `Log` trait
+/// Quicklog implements the Log trait, to provide logging
 pub struct Quicklog {
     flusher: Container<dyn Flush>,
     clock: Container<dyn Clock>,
@@ -276,8 +269,8 @@ impl Log for Quicklog {
         }
     }
 
-    fn log(&self, callsite: &Callsite, display: Container<dyn Display>) -> SendResult {
-        match callsite.sender.send((self.clock.get_instant(), display)) {
+    fn log(&self, display: Container<dyn Display>) -> SendResult {
+        match unsafe { CHANNEL.0.send((self.clock.get_instant(), display)) } {
             Ok(_) => Ok(()),
             Err(err) => Err(err),
         }

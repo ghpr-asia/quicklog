@@ -42,7 +42,9 @@ macro_rules! log {
 }
 
 /// Checks if the current level we are trying to log is enabled by checking
-/// static `MAX_LOG_LEVEL` which is evaluated at compile time
+/// static [`MAX_LOG_LEVEL`] which is evaluated at compile time
+///
+/// [`MAX_LOG_LEVEL`]: crate::level::MAX_LOG_LEVEL
 #[doc(hidden)]
 #[macro_export]
 macro_rules! is_level_enabled {
@@ -59,16 +61,11 @@ macro_rules! try_log {
   // === no args
   ($lvl:expr, $static_str:literal) => {{
     if $crate::is_level_enabled!($lvl) {
-      use $crate::{Log, callsite::Callsite, clone_sender, make_container};
-      use once_cell::sync::Lazy;
-      static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+      use $crate::{Log, make_container};
 
       let log_line = lazy_format::lazy_format!("[{}]\t{}", $lvl, $static_str);
 
-      $crate::logger().log(
-        &CALLSITE,
-        make_container!(log_line)
-      )
+      $crate::logger().log(make_container!(log_line))
     } else {
       Ok(())
     }
@@ -85,9 +82,7 @@ macro_rules! try_log {
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($([$($field:tt)*])*)) => {
     paste::paste! {{
       if $crate::is_level_enabled!($lvl) {
-        use $crate::{Log, callsite::Callsite, clone_sender, make_container};
-        use once_cell::sync::Lazy;
-        static CALLSITE: Lazy<Callsite> = Lazy::new(|| Callsite::new(clone_sender()));
+        use $crate::{Log, make_container};
 
         // allow unused_parens for case with 1 single field
         #[allow(unused_parens)]
@@ -97,10 +92,7 @@ macro_rules! try_log {
           write!(f, concat!("[{}]\t", $static_str), $lvl, $([<$($field)*>]),*)
         });
 
-        $crate::logger().log(
-          &CALLSITE,
-          make_container!(log_line)
-        )
+        $crate::logger().log(make_container!(log_line))
       } else {
         Ok(())
       }
