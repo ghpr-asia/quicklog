@@ -26,6 +26,9 @@
 //!
 //! # Usage
 //!
+//! The `init!()` macro needs to be called to initialize the logger before we can
+//! start logging, so it needs to be added near the entry point of your application.
+//!
 //! ## Example Usage
 //!
 //! ```ignore
@@ -34,6 +37,8 @@
 //! use quicklog::{info, flush};
 //!
 //! fn main() {
+//!     init!();
+//!
 //!     info!("hello world! {}", "some argument");
 //!     thread::spawn(|| {
 //!         flush!();
@@ -132,7 +137,10 @@
 //! impl Clock for SomeClock { /* impl methods */ }
 //!
 //! fn main() {
+//!     init!();
+//!
 //!     with_clock!(SomeClock::new());
+//!
 //!     // logger now uses SomeClock for timestamping
 //!     info!("Hello, world!");
 //!     flush!();
@@ -152,7 +160,10 @@
 //! use quicklog_flush::file_flusher::FileFlusher;
 //!
 //! fn main() {
+//!     init!();
+//!
 //!     with_flush!(FileFlusher::new("some/new/location/logs.log"));
+//!
 //!     // uses the new FileFlusher passed in for flushing
 //!     flush!();
 //! }
@@ -160,7 +171,7 @@
 //!
 //! [`Serialize`]: serialize::Serialize
 
-use once_cell::unsync::Lazy;
+use once_cell::unsync::{Lazy, OnceCell};
 use quanta::Instant;
 use std::{
     fmt::Display,
@@ -192,10 +203,10 @@ pub type RecvResult = Result<(), RecvTimeoutError>;
 // TODO: Allow capacity to be set through env var
 const MAX_CAPACITY: usize = 1_000_000;
 
-/// Channel handles the intermediate communication between senders and receivers
-/// ! DANGER ! NOT THREAD-SAFE
-#[doc(hidden)]
-static mut CHANNEL: Lazy<(Sender, Receiver)> = Lazy::new(|| sync_channel(MAX_CAPACITY));
+/// Sender handles sending into the mpsc queue
+static mut SENDER: OnceCell<Sender> = OnceCell::new();
+/// Receiver handles flushing from mpsc queue
+static mut RECEIVER: OnceCell<Receiver> = OnceCell::new();
 
 /// Log is the base trait that Quicklog will implement.
 /// Flushing and formatting is deferred while logging.
@@ -228,6 +239,24 @@ impl Quicklog {
     pub fn use_clock(&mut self, clock: Container<dyn Clock>) {
         self.clock = clock
     }
+
+    /// Initializes channel inside of quicklog, can be called
+    /// through [`init!`] macro
+    pub fn init() {
+        Quicklog::init_channel();
+    }
+
+    fn init_channel() {
+        let (sender, receiver): (Sender, Receiver) = sync_channel(MAX_CAPACITY);
+        unsafe {
+            SENDER
+                .set(sender)
+                .expect("Unable to set static SENDER variable, did you call initialize twice?");
+            RECEIVER
+                .set(receiver)
+                .expect("Unable to set static RECEIVER variable, did you call initialize twice?");
+        }
+    }
 }
 
 impl Default for Quicklog {
@@ -253,7 +282,12 @@ impl Log for Quicklog {
 
         // Flushes until we reach an error
         loop {
-            match unsafe { CHANNEL.1.recv_timeout(timeout) } {
+            match unsafe {
+                RECEIVER
+                    .get()
+                    .expect("RECEIVER is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
+                    .recv_timeout(timeout)
+            } {
                 Ok((time_logged, disp)) => {
                     let log_line = format!(
                         "[{:?}]{}\n",
@@ -270,7 +304,12 @@ impl Log for Quicklog {
     }
 
     fn log(&self, display: Container<dyn Display>) -> SendResult {
-        match unsafe { CHANNEL.0.send((self.clock.get_instant(), display)) } {
+        match unsafe {
+            SENDER
+                .get()
+                .expect("Sender is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
+                .send((self.clock.get_instant(), display))
+        } {
             Ok(_) => Ok(()),
             Err(err) => Err(err),
         }
@@ -327,14 +366,19 @@ mod tests {
             .collect::<String>()
     }
 
-    // tests need to be single threaded, this mutex ensures
-    // tests are only executed in single threaded mode
+    /// tests need to be single threaded, this mutex ensures
+    /// tests are only executed in single threaded mode
+    /// and [`Quicklog::init!`] is only called once.
     static TEST_LOCK: Mutex<usize> = Mutex::new(0);
 
     macro_rules! setup {
         () => {
             // acquire lock within scope of each test
-            let _guard = TEST_LOCK.lock().unwrap();
+            let mut guard = TEST_LOCK.lock().unwrap();
+            if *guard == 0 {
+                crate::init!();
+                *guard += 1;
+            }
             static mut VEC: Vec<String> = Vec::new();
             let vec_flusher = unsafe { VecFlusher::new(&mut VEC) };
             crate::logger().use_flush(Box::new(vec_flusher));

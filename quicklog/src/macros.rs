@@ -8,6 +8,17 @@ macro_rules! with_flush {
     }};
 }
 
+/// Initializes Quicklog by calling [`Quicklog::init()`]
+/// Should only be called once in the application
+///
+/// [`Quicklog::init()`]: `crate::Quicklog
+#[macro_export]
+macro_rules! init {
+    () => {
+        $crate::Quicklog::init();
+    };
+}
+
 /// Used to amend which `Clock` is currently attached to `Quicklog`
 /// An implementation can be passed in at runtime as long as it
 /// adheres to the `Clock` trait in `quicklog-clock`
