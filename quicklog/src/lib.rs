@@ -171,13 +171,10 @@
 //!
 //! [`Serialize`]: serialize::Serialize
 
+use heapless::spsc::Queue;
 use once_cell::unsync::{Lazy, OnceCell};
 use quanta::Instant;
-use std::{
-    fmt::Display,
-    sync::mpsc::{sync_channel, RecvTimeoutError, SendError},
-    time::Duration,
-};
+use std::fmt::Display;
 
 use quicklog_clock::{quanta::QuantaClock, Clock};
 use quicklog_flush::{file_flusher::FileFlusher, Flush};
@@ -195,10 +192,10 @@ pub type Intermediate = (Instant, Container<dyn Display>);
 #[doc(hidden)]
 static mut LOGGER: Lazy<Quicklog> = Lazy::new(Quicklog::default);
 
-pub type Sender = std::sync::mpsc::SyncSender<Intermediate>;
-pub type SendResult = Result<(), SendError<Intermediate>>;
-pub type Receiver = std::sync::mpsc::Receiver<Intermediate>;
-pub type RecvResult = Result<(), RecvTimeoutError>;
+pub type Sender = heapless::spsc::Producer<'static, Intermediate, MAX_CAPACITY>;
+pub type SendResult = Result<(), Intermediate>;
+pub type Receiver = heapless::spsc::Consumer<'static, Intermediate, MAX_CAPACITY>;
+pub type RecvResult = ();
 
 // TODO: Allow capacity to be set through env var
 const MAX_CAPACITY: usize = 1_000_000;
@@ -210,8 +207,8 @@ static mut RECEIVER: OnceCell<Receiver> = OnceCell::new();
 
 /// Log is the base trait that Quicklog will implement.
 /// Flushing and formatting is deferred while logging.
-pub trait Log: Send + Sync {
-    fn flush(&mut self, timeout: Option<Duration>) -> RecvResult;
+pub trait Log {
+    fn flush(&mut self) -> RecvResult;
     fn log(&self, display: Container<dyn Display>) -> SendResult;
 }
 
@@ -247,14 +244,11 @@ impl Quicklog {
     }
 
     fn init_channel() {
-        let (sender, receiver): (Sender, Receiver) = sync_channel(MAX_CAPACITY);
+        static mut QUEUE: Queue<Intermediate, MAX_CAPACITY> = Queue::new();
+        let (sender, receiver): (Sender, Receiver) = unsafe { QUEUE.split() };
         unsafe {
-            SENDER
-                .set(sender)
-                .expect("Unable to set static SENDER variable, did you call initialize twice?");
-            RECEIVER
-                .set(receiver)
-                .expect("Unable to set static RECEIVER variable, did you call initialize twice?");
+            SENDER.set(sender).ok();
+            RECEIVER.set(receiver).ok();
         }
     }
 }
@@ -274,21 +268,16 @@ unsafe impl Send for Quicklog {}
 unsafe impl Sync for Quicklog {}
 
 impl Log for Quicklog {
-    fn flush(&mut self, maybe_timeout: Option<Duration>) -> RecvResult {
-        /// Defines timeout duration we wait before we timeout when flushing from
-        /// the channel's receiver
-        const DEFAULT_TIMEOUT_DURATION: Duration = Duration::from_millis(10);
-        let timeout = maybe_timeout.unwrap_or(DEFAULT_TIMEOUT_DURATION);
-
-        // Flushes until we reach an error
+    fn flush(&mut self) -> RecvResult {
+        // Flushes until its empty
         loop {
             match unsafe {
                 RECEIVER
-                    .get()
+                    .get_mut()
                     .expect("RECEIVER is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
-                    .recv_timeout(timeout)
+                    .dequeue()
             } {
-                Ok((time_logged, disp)) => {
+                Some((time_logged, disp)) => {
                     let log_line = format!(
                         "[{:?}]{}\n",
                         self.clock
@@ -298,7 +287,7 @@ impl Log for Quicklog {
                     );
                     self.flusher.flush(log_line);
                 }
-                Err(err) => return Err(err),
+                None => return,
             }
         }
     }
@@ -306,9 +295,9 @@ impl Log for Quicklog {
     fn log(&self, display: Container<dyn Display>) -> SendResult {
         match unsafe {
             SENDER
-                .get()
+                .get_mut()
                 .expect("Sender is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
-                .send((self.clock.get_instant(), display))
+                .enqueue((self.clock.get_instant(), display))
         } {
             Ok(_) => Ok(()),
             Err(err) => Err(err),

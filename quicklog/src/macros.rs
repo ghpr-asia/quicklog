@@ -316,38 +316,15 @@ macro_rules! try_flush_with_timeout {
 }
 
 /// Allows flushing onto an implementor of [`Flush`], which can be modified with
-/// [`with_flush!`] macro.
-///
-/// [`Flush`]: `quicklog_flush::Flush`
-#[macro_export]
-macro_rules! try_flush {
-    () => {{
-        use $crate::Log;
-        $crate::logger().flush(None)
-    }};
-}
-
-/// Allows flushing onto an implementor of [`Flush`], which can be modified with
-/// [`with_flush!`] macro, simply unwrapped from [`try_flush!`]
+/// [`with_flush!`] macro
 ///
 /// [`Flush`]: `quicklog_flush::Flush`
 #[macro_export]
 macro_rules! flush {
-    () => {
-        $crate::try_flush!().unwrap_or(());
-    };
-}
-
-/// Allows flushing onto an implementor of [`Flush`], which can be modified with
-/// [`with_flush!`] macro, and allows passing in of a timeout, simply unwrapped
-/// from [`try_flush_with_timeout!`].
-///
-/// [`Flush`]: `quicklog_flush::Flush`
-#[macro_export]
-macro_rules! flush_with_timeout {
-    ($timeout:expr) => {
-        $crate::try_flush_with_timeout!($timeout).unwrap_or(());
-    };
+    () => {{
+        use $crate::Log;
+        $crate::logger().flush()
+    }};
 }
 
 /// Trace level log

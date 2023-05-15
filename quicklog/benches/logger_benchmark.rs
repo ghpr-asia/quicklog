@@ -55,12 +55,12 @@ impl Serialize for BigStruct {
 
 macro_rules! loop_with_cleanup {
     ($bencher:expr, $loop_f:expr) => {
-        loop_with_cleanup!($bencher, $loop_f, {
-            while quicklog::try_flush!().is_ok() {}
-        })
+        loop_with_cleanup!($bencher, $loop_f, { quicklog::flush!() })
     };
 
-    ($bencher:expr, $loop_f:expr, $cleanup_f:expr) => {
+    ($bencher:expr, $loop_f:expr, $cleanup_f:expr) => {{
+        quicklog::init!();
+
         $bencher.iter_custom(|iters| {
             let start = Instant::now();
 
@@ -74,7 +74,7 @@ macro_rules! loop_with_cleanup {
 
             end
         })
-    };
+    }};
 }
 
 fn bench_lazy_format(b: &mut Bencher) {
