@@ -197,6 +197,7 @@ pub mod macros;
 pub mod serialize;
 
 include!("constants.rs");
+/// `constants.rs` is generated from `build.rs`
 pub mod constants;
 
 pub type Container<T> = Box<T>;
@@ -207,10 +208,14 @@ pub type Intermediate = (Instant, Container<dyn Display>);
 #[doc(hidden)]
 static mut LOGGER: Lazy<Quicklog> = Lazy::new(Quicklog::default);
 
+/// Producer side of queue
 pub type Sender = heapless::spsc::Producer<'static, Intermediate, MAX_LOGGER_CAPACITY>;
+/// Result from pushing onto queue
 pub type SendResult = Result<(), Intermediate>;
+/// Consumer side of queue
 pub type Receiver = heapless::spsc::Consumer<'static, Intermediate, MAX_LOGGER_CAPACITY>;
-pub type RecvResult = ();
+/// Result from trying to pop from logging queue
+pub type RecvResult = Result<(), FlushError>;
 
 /// Sender handles sending into the mpsc queue
 static mut SENDER: OnceCell<Sender> = OnceCell::new();
@@ -220,8 +225,15 @@ static mut RECEIVER: OnceCell<Receiver> = OnceCell::new();
 /// Log is the base trait that Quicklog will implement.
 /// Flushing and formatting is deferred while logging.
 pub trait Log {
-    fn flush(&mut self) -> RecvResult;
+    fn flush_one(&mut self) -> RecvResult;
     fn log(&self, display: Container<dyn Display>) -> SendResult;
+}
+
+/// Errors that can be presented when flushing
+#[derive(Debug)]
+pub enum FlushError {
+    /// Queue is empty
+    Empty,
 }
 
 /// Returns a mut reference to the globally static logger [`LOGGER`]
@@ -287,30 +299,6 @@ unsafe impl Send for Quicklog {}
 unsafe impl Sync for Quicklog {}
 
 impl Log for Quicklog {
-    fn flush(&mut self) -> RecvResult {
-        // Flushes until its empty
-        loop {
-            match unsafe {
-                RECEIVER
-                    .get_mut()
-                    .expect("RECEIVER is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
-                    .dequeue()
-            } {
-                Some((time_logged, disp)) => {
-                    let log_line = format!(
-                        "[{:?}]{}\n",
-                        self.clock
-                            .compute_system_time_from_instant(time_logged)
-                            .expect("Unable to get time from instant"),
-                        disp
-                    );
-                    self.flusher.flush(log_line);
-                }
-                None => return,
-            }
-        }
-    }
-
     fn log(&self, display: Container<dyn Display>) -> SendResult {
         match unsafe {
             SENDER
@@ -320,6 +308,28 @@ impl Log for Quicklog {
         } {
             Ok(_) => Ok(()),
             Err(err) => Err(err),
+        }
+    }
+
+    fn flush_one(&mut self) -> RecvResult {
+        match unsafe {
+            RECEIVER
+                    .get_mut()
+                    .expect("RECEIVER is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
+                    .dequeue()
+        } {
+            Some((time_logged, disp)) => {
+                let log_line = format!(
+                    "[{:?}]{}\n",
+                    self.clock
+                        .compute_system_time_from_instant(time_logged)
+                        .expect("Unable to get time from instant"),
+                    disp
+                );
+                self.flusher.flush(log_line);
+                Ok(())
+            }
+            None => Err(FlushError::Empty),
         }
     }
 }

@@ -334,15 +334,27 @@ macro_rules! try_flush_with_timeout {
 }
 
 /// Allows flushing onto an implementor of [`Flush`], which can be modified with
-/// [`with_flush!`] macro
+/// [`with_flush!`] macro and returns [`RecvResult`]
+///
+/// [`Flush`]: quicklog_flush::Flush
+/// [`RecvResult`]: crate::RecvResult
+#[macro_export]
+macro_rules! try_flush {
+    () => {{
+        use $crate::Log;
+        $crate::logger().flush_one()
+    }};
+}
+
+/// Allows flushing onto an implementor of [`Flush`], which can be modified with
+/// [`with_flush!`] macro and unwraps result from [`try_flush`]
 ///
 /// [`Flush`]: `quicklog_flush::Flush`
 #[macro_export]
 macro_rules! flush {
-    () => {{
-        use $crate::Log;
-        $crate::logger().flush()
-    }};
+    () => {
+        $crate::try_flush!().unwrap();
+    };
 }
 
 /// Trace level log
