@@ -119,6 +119,17 @@
 //! }
 //! ```
 //!
+//! ## Config
+//!
+//! There are two environment variables you can set:
+//!
+//! 1. [`QUICKLOG_MAX_LOGGER_CAPACITY`]: sets the size of the spsc ring buffer
+//!     used for logging
+//! 2. [`QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY`]: sets the size of the byte buffer used
+//!     for static serialization
+//!     - this can be increased when you run into issues out of memory in debug
+//!         when conducting load testing
+//!
 //! # Components
 //!
 //! ## quicklog-clock
@@ -179,10 +190,14 @@ use std::fmt::Display;
 use quicklog_clock::{quanta::QuantaClock, Clock};
 use quicklog_flush::{file_flusher::FileFlusher, Flush};
 
+pub mod buffer;
 pub mod callsite;
 pub mod level;
 pub mod macros;
 pub mod serialize;
+
+include!("constants.rs");
+pub mod constants;
 
 pub type Container<T> = Box<T>;
 
@@ -192,13 +207,10 @@ pub type Intermediate = (Instant, Container<dyn Display>);
 #[doc(hidden)]
 static mut LOGGER: Lazy<Quicklog> = Lazy::new(Quicklog::default);
 
-pub type Sender = heapless::spsc::Producer<'static, Intermediate, MAX_CAPACITY>;
+pub type Sender = heapless::spsc::Producer<'static, Intermediate, MAX_LOGGER_CAPACITY>;
 pub type SendResult = Result<(), Intermediate>;
-pub type Receiver = heapless::spsc::Consumer<'static, Intermediate, MAX_CAPACITY>;
+pub type Receiver = heapless::spsc::Consumer<'static, Intermediate, MAX_LOGGER_CAPACITY>;
 pub type RecvResult = ();
-
-// TODO: Allow capacity to be set through env var
-const MAX_CAPACITY: usize = 1_000_000;
 
 /// Sender handles sending into the mpsc queue
 static mut SENDER: OnceCell<Sender> = OnceCell::new();
@@ -241,10 +253,17 @@ impl Quicklog {
     /// through [`init!`] macro
     pub fn init() {
         Quicklog::init_channel();
+        Quicklog::init_buffer();
+    }
+
+    fn init_buffer() {
+        unsafe {
+            buffer::BUFFER.set(buffer::Buffer::new()).ok();
+        }
     }
 
     fn init_channel() {
-        static mut QUEUE: Queue<Intermediate, MAX_CAPACITY> = Queue::new();
+        static mut QUEUE: Queue<Intermediate, MAX_LOGGER_CAPACITY> = Queue::new();
         let (sender, receiver): (Sender, Receiver) = unsafe { QUEUE.split() };
         unsafe {
             SENDER.set(sender).ok();
@@ -798,7 +817,7 @@ mod tests {
             some: "The quick brown fox jumps over the lazy dog",
         };
 
-        assert_message_equal!(info!("s: {}", ^s), "s: Hello");
+        assert_message_equal!(info!("s: {} {}", ^s, ^s), "s: Hello Hello");
         assert_message_equal!(
             info!("bs: {}", ^bs),
             format!(

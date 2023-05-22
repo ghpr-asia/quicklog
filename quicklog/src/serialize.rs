@@ -1,37 +1,23 @@
 use std::{fmt::Display, str::from_utf8};
 
-// TODO: Allow this to be specified in some env var
-const MAX_CAPACITY: usize = 1_000_000;
-
-/// Byte buffer used to store data serialized onto it
-static mut BUFFER: [u8; MAX_CAPACITY] = [0_u8; MAX_CAPACITY];
-
-/// Tail end of [`BUFFER`]
-static mut TAIL: Option<&'static mut [u8]> = None;
+use crate::buffer;
 
 /// Private level API to get a chunk from buffer
 ///
 /// ! DANGER
 ///
-/// TODO: Find some way to make this safer, perhaps using `ringbuf` or `bytes`
-/// to manage [`BUFFER`] instead of hand writing this.
+/// In release, the [`TAIL`] wraps around back to the start of the buffer when
+/// there isn't sufficient space left inside of [`BUFFER`]. If this happens,
+/// the buffer might overwrite previous data with anything.
 ///
-/// The [`TAIL`] wraps around back to the start of the buffer when there isn't
-/// sufficient space left inside of [`BUFFER`]. If this happens, the buffer
-/// might overwrite previous data with anything.
+/// In debug, the method panics when we reach the end of the buffer
 #[doc(hidden)]
 pub fn get_chunk_as_mut(chunk_size: usize) -> &'static mut [u8] {
     unsafe {
-        let buf = match TAIL.as_deref_mut() {
-            Some(tail) if tail.len() < chunk_size => &mut BUFFER,
-            Some(tail) => tail,
-            None => &mut BUFFER,
-        };
-
-        let (head, new_tail) = buf.split_at_mut(chunk_size);
-        TAIL = Some(new_tail);
-
-        head
+        buffer::BUFFER
+            .get_mut()
+            .expect("BUFFER not init, did you run init?")
+            .get_chunk_as_mut(chunk_size)
     }
 }
 
@@ -46,14 +32,27 @@ pub trait Serialize {
 /// Function pointer which decodes a byte buffer back into `String` representation
 pub type DecodeFn = fn(&[u8]) -> String;
 
-/// Contains the decode function required to decode `buffer` back into a `String`
-/// representation.
-///
-/// implements `Clone` and `Display`
-#[derive(Clone)]
-pub struct Store {
-    decode_fn: DecodeFn,
-    buffer: &'static [u8],
+cfg_if::cfg_if! {
+    if #[cfg(debug_assertions)] {
+        /// Contains the decode function required to decode `buffer` back into a `String`
+        /// representation.
+        ///
+        /// Store **SHOULD NOT** implement `Clone`, in debug, otherwise, there might be
+        /// double updating of the tail of the buffer in `Drop` causing the tail to overrun
+        /// the head, even though it actually did not
+        pub struct Store {
+            decode_fn: DecodeFn,
+            buffer: &'static [u8],
+        }
+    } else {
+        /// Contains the decode function required to decode `buffer` back into a `String`
+        /// representation.
+        #[derive(Clone)]
+        pub struct Store {
+            decode_fn: DecodeFn,
+            buffer: &'static [u8],
+        }
+    }
 }
 
 impl Store {
@@ -69,6 +68,24 @@ impl Store {
 impl Display for Store {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_string())
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(debug_assertions)] {
+        impl Drop for Store {
+            /// Increments the buffer read_idx by length of buffer acquired, since we are
+            /// always guaranteed to read in-order from front to back, this is safe,
+            /// unless Store gets cloned, this only happens in Debug
+            fn drop(&mut self) {
+                unsafe {
+                    buffer::BUFFER
+                        .get_mut()
+                        .expect("Unable to get BUFFER, has it been init?")
+                        .dealloc(self.buffer.len())
+                }
+            }
+        }
     }
 }
 

@@ -1,0 +1,2 @@
+pub const MAX_LOGGER_CAPACITY: usize = 1000000;
+pub const MAX_SERIALIZE_BUFFER_CAPACITY: usize = 1000000;
