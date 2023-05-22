@@ -12,7 +12,7 @@ fn parse_value_from_config_with_default<T: FromStr>(
         Ok(value) => match value.parse::<T>() {
             Ok(val) => Ok(val),
             Err(_) => {
-                Err(format!("env var '{}' with value '{}' cannot be parsed into type '{2}'. Please set an env var can be parsed into '{2}'", key, value, stringify!(T)))
+                Err(format!("env var '{}' with value '{}' cannot be parsed into type '{2}'. Please set an env var can be parsed into '{2}'", key, value, std::any::type_name::<T>()))
             }
         },
         Err(_) => match default {
@@ -26,25 +26,27 @@ fn parse_value_from_config_with_default<T: FromStr>(
 }
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY");
     let max_buffer_capacity = match parse_value_from_config_with_default(
         "QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY",
         Some(1_000_000_usize),
     ) {
         Ok(val) => val,
         Err(err) => {
-            eprintln!("{}", err);
-            return;
+            println!("cargo:warning={}", err);
+            1_000_000
         }
     };
 
+    println!("cargo:rerun-if-env-changed=QUICKLOG_MAX_LOGGER_CAPACITY");
     let max_logger_capacity = match parse_value_from_config_with_default(
         "QUICKLOG_MAX_LOGGER_CAPACITY",
         Some(1_000_000_usize),
     ) {
         Ok(val) => val,
         Err(err) => {
-            eprintln!("{}", err);
-            return;
+            println!("cargo:warning={}", err);
+            1_000_000
         }
     };
 
@@ -61,6 +63,4 @@ pub const MAX_SERIALIZE_BUFFER_CAPACITY: usize = {};
     let mut file = File::create(dest_path).expect("Failed to create file");
     file.write_all(rust_code.as_bytes())
         .expect("Failed to write file");
-
-    println!("cargo:rerun-if-env-changed=MAX_CAPACITY");
 }
