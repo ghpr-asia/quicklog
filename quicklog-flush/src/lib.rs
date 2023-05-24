@@ -20,7 +20,7 @@
 //!         while let Some(item) = queue.pop_front() {
 //!             let log_string = serialize_into_string(item);
 //!             // flusher implements `Flush` trait
-//!             flusher.flush(log_string);
+//!             flusher.flush_one(log_string);
 //!         }
 //!     }
 //! }
@@ -37,7 +37,7 @@ pub mod stdout_flusher;
 /// perform some type of IO operation, i.e. writing to file, writing to
 /// stdout, etc
 pub trait Flush {
-    /// Handles a string from another thread, and performs stateful
+    /// Handles a string from another thread, and potentially performs I/O
     /// operations such as writing to a file or to stdout
-    fn flush(&mut self, display: String);
+    fn flush_one(&mut self, display: String);
 }

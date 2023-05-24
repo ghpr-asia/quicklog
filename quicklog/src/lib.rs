@@ -1,4 +1,4 @@
-//! An asynchronous logger where formatting and I/O is deferred.
+//! An asynchronous single-threaded logger where formatting and I/O are deferred at callsite.
 //!
 //! # Overview
 //!
@@ -8,7 +8,7 @@
 //!
 //! ## Deferred Formatting
 //!
-//! ### Why?
+//! #### Why?
 //!
 //! Formatting a `struct` into a `String` requires the overhead of serialization.
 //! Deferring the serialization of a struct can be avoided by cloning / copying
@@ -19,36 +19,39 @@
 //!
 //! ## Deferred I/O
 //!
-//! ### Why?
+//! #### Why?
 //!
 //! Deferring the I/O of formatting would allow for low callsite latency and allow
 //! a user to implement their own flush site, possibly on a separate thread
 //!
 //! # Usage
 //!
-//! The `init!()` macro needs to be called to initialize the logger before we can
-//! start logging, so it needs to be added near the entry point of your application.
+//! `init!()` macro needs to be called to initialize the logger before we can
+//! start logging, probably near the entry point of your application.
 //!
 //! ## Example Usage
 //!
-//! ```ignore
-//! use std::thread;
-//!
-//! use quicklog::{info, flush};
-//!
+//! ```
+//! # use std::thread;
+//! # use quicklog::{info, init, flush};
 //! fn main() {
 //!     init!();
 //!
+//!     // log some stuff
 //!     info!("hello world! {}", "some argument");
+//!
+//!     // flush on separate thread
 //!     thread::spawn(|| {
-//!         flush!();
+//!         loop {
+//!             flush!();
+//!         }
 //!     });
 //! }
 //! ```
 //!
 //! # Macros
 //!
-//! ## Shorthand Macros
+//! #### Shorthand Macros
 //!
 //! Quicklog allows a number of macros with 5 different levels of verbosity. These
 //! wrap around [`log!`] with the corresponding levels.
@@ -59,14 +62,17 @@
 //! * [`warn!`]
 //! * [`error!`]
 //!
+//! Internally, these shorthands call [`try_log!`] with their respective levels.
+//!
 //! ## Setup Macros
 //!
 //! Quicklog allows a user specified [`Clock`] or [`Flush`] to be implemented by
 //! the user. This can be passed in through these macros, as long as the
 //! underlying struct implements the correct traits
 //!
-//! * [`with_clock!`]
-//! * [`with_flush!`]
+//! * [`with_clock!`]: Specify the Clock Quicklog uses
+//! * [`with_flush!`]: Specify the Flusher Quicklog uses
+//! * [`with_flush_into_file`]: Specify path to flush log lines into
 //!
 //! ## Macro prefix for partial serialization
 //!
@@ -74,14 +80,18 @@
 //! you might not want to log. This functionality can be done through implementing the
 //! [`Serialize`] trait, where you can implement how to copy which parts of the struct.
 //!
+//! This could additionally be helpful if you already have the struct inside a buffer in byte
+//! form, as you could simply pass the buffer directly into the decode fn, eliminiating any
+//! need to copy.
+//!
 //! ```ignore
 //! struct SomeStruct {
 //!     num: i64
 //! }
 //!
 //! impl Serialize for SomeStruct {
-//!    fn encode(&self, write_buf: &'static mut [u8]) -> Store { /* some impl */}
-//!    fn buffer_size_required(&self) -> usize { /* some impl */}
+//!    fn encode(&self, write_buf: &'static mut [u8]) -> Store { /* some impl */ }
+//!    fn buffer_size_required(&self) -> usize { /* some impl */ }
 //! }
 //!
 //! fn main() {
@@ -96,39 +106,49 @@
 //! way as `tracing`, where `%` eagerly evaluates an object that implements `Display`
 //! and `?` eagerly evaluates an object that implements `Debug`.
 //!
-//! ```ignore
-//! fn main {
-//!     info!("eager display {}; eager debug {}", %display_struct, ?debug_struct);
-//! }
+//! ```
+//! # use quicklog::{init, info};
+//! # fn main() {
+//! # let impl_debug = "";
+//! # let impl_display = "";
+//! # init!();
+//! info!("eager display {}; eager debug {}", %impl_display, ?impl_debug);
+//! // logically expands into:
+//! // info!(
+//! //      "eager display {}; eager debug {}",
+//! //      format!("{}",   impl_display),
+//! //      format!("{:?}", impl_debug)
+//! // );
+//! # }
 //! ```
 //!
 //! ## Structured fields
 //!
 //! Structured fields in log lines can be specified using `field_name = field_value`
 //! syntax. `field_name` can be a literal or a bunch of idents. This can also
-//! be used in combination with '%' and '?' prefix on args to eagerly evaluate
+//! be used in combination with `%` and `?` prefix on args to eagerly evaluate
 //! expressions into format strings.
 //!
-//! ```ignore
-//! fn main {
-//!     let value = 10;
-//!     info!("hello world; {}; {}", "some string field" = true, "value is" = %value);
-//!     // output: "hello world; some string field=true; value is=10"
-//!     info!("hello world {} {} {}", question.tricky = true, question.answer = ?value, question.val = &value);
-//!     // output: "hello world question.tricky=true question.answer=10 question.val=10"
-//! }
+//! ```
+//! # use quicklog::{init, info};
+//! # fn main() {
+//! # init!();
+//! # let value = 10;
+//! info!("hello world {} {} {}", question.tricky = true, question.answer = ?value, question.val = &value);
+//! // output: "hello world question.tricky=true question.answer=10 question.val=10"
+//! # }
 //! ```
 //!
-//! ## Config
+//! # Environment variables
 //!
 //! There are two environment variables you can set:
 //!
-//! 1. [`QUICKLOG_MAX_LOGGER_CAPACITY`]: sets the size of the spsc ring buffer
-//!     used for logging
-//! 2. [`QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY`]: sets the size of the byte buffer used
-//!     for static serialization
+//! 1. `QUICKLOG_MAX_LOGGER_CAPACITY`
+//!     - sets the size of the spsc ring buffer used for logging
+//! 2. `QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY`
+//!     - sets the size of the byte buffer used for static serialization
 //!     - this can be increased when you run into issues out of memory in debug
-//!         when conducting load testing
+//!     when conducting load testing
 //!
 //! # Components
 //!
@@ -167,20 +187,22 @@
 //!
 //! ### Example
 //!
-//! ```ignore
-//! use quicklog_flush::file_flusher::FileFlusher;
-//!
+//! ```
+//! # use quicklog::{init, flush, with_flush};
+//! # use quicklog_flush::stdout_flusher::StdoutFlusher;
 //! fn main() {
 //!     init!();
 //!
-//!     with_flush!(FileFlusher::new("some/new/location/logs.log"));
+//!     with_flush!(StdoutFlusher);
 //!
-//!     // uses the new FileFlusher passed in for flushing
+//!     // uses the StdoutFlusher passed in for flushing
 //!     flush!();
 //! }
 //! ```
 //!
 //! [`Serialize`]: serialize::Serialize
+//! [`StdoutFlusher`]: quicklog_flush::stdout_flusher::StdoutFlusher
+//! [`FileFlusher`]: quicklog_flush::file_flusher::FileFlusher
 
 use heapless::spsc::Queue;
 use once_cell::unsync::{Lazy, OnceCell};
@@ -190,19 +212,26 @@ use std::fmt::Display;
 use quicklog_clock::{quanta::QuantaClock, Clock};
 use quicklog_flush::{file_flusher::FileFlusher, Flush};
 
+/// contains buffer used in [`serialize`]
+///
+/// [`serialize`]: crate::serialize
 pub mod buffer;
-pub mod callsite;
+/// contains logging levels and filters
 pub mod level;
+/// contains macros
 pub mod macros;
+/// contains trait for serialization and pre-generated impl for common types
 pub mod serialize;
 
 include!("constants.rs");
-/// `constants.rs` is generated from `build.rs`
+/// `constants.rs` is generated from `build.rs`, should not be modified manually
 pub mod constants;
 
-pub type Container<T> = Box<T>;
-
-pub type Intermediate = (Instant, Container<dyn Display>);
+/// Internal API
+///
+/// Intermediate log item being stored into logging queue
+#[doc(hidden)]
+pub type Intermediate = (Instant, Box<dyn Display>);
 
 /// Logger initialized to Quicklog
 #[doc(hidden)]
@@ -225,8 +254,10 @@ static mut RECEIVER: OnceCell<Receiver> = OnceCell::new();
 /// Log is the base trait that Quicklog will implement.
 /// Flushing and formatting is deferred while logging.
 pub trait Log {
+    /// Dequeues a single line from logging queue and passes it to Flusher
     fn flush_one(&mut self) -> RecvResult;
-    fn log(&self, display: Container<dyn Display>) -> SendResult;
+    /// Enqueues a single line onto logging queue
+    fn log(&self, display: Box<dyn Display>) -> SendResult;
 }
 
 /// Errors that can be presented when flushing
@@ -236,9 +267,9 @@ pub enum FlushError {
     Empty,
 }
 
-/// Returns a mut reference to the globally static logger [`LOGGER`]
+///  ha**Internal API**
 ///
-/// Used internally for macros
+/// Returns a mut reference to the globally static logger [`LOGGER`]
 #[doc(hidden)]
 pub fn logger() -> &'static mut Quicklog {
     unsafe { &mut LOGGER }
@@ -246,18 +277,20 @@ pub fn logger() -> &'static mut Quicklog {
 
 /// Quicklog implements the Log trait, to provide logging
 pub struct Quicklog {
-    flusher: Container<dyn Flush>,
-    clock: Container<dyn Clock>,
+    flusher: Box<dyn Flush>,
+    clock: Box<dyn Clock>,
 }
 
 impl Quicklog {
+    /// Sets which flusher to be used, used in [`with_flush!`]
     #[doc(hidden)]
-    pub fn use_flush(&mut self, flush: Container<dyn Flush>) {
+    pub fn use_flush(&mut self, flush: Box<dyn Flush>) {
         self.flusher = flush
     }
 
+    /// Sets which flusher to be used, used in [`with_clock!`]
     #[doc(hidden)]
-    pub fn use_clock(&mut self, clock: Container<dyn Clock>) {
+    pub fn use_clock(&mut self, clock: Box<dyn Clock>) {
         self.clock = clock
     }
 
@@ -268,12 +301,14 @@ impl Quicklog {
         Quicklog::init_buffer();
     }
 
+    /// Initializes buffer for static serialization
     fn init_buffer() {
         unsafe {
             buffer::BUFFER.set(buffer::Buffer::new()).ok();
         }
     }
 
+    /// Initializes channel for main logging queue
     fn init_channel() {
         static mut QUEUE: Queue<Intermediate, MAX_LOGGER_CAPACITY> = Queue::new();
         let (sender, receiver): (Sender, Receiver) = unsafe { QUEUE.split() };
@@ -287,19 +322,14 @@ impl Quicklog {
 impl Default for Quicklog {
     fn default() -> Self {
         Quicklog {
-            flusher: Container::new(FileFlusher::new("logs/quicklog.log")),
-            clock: Container::new(QuantaClock::new()),
+            flusher: Box::new(FileFlusher::new("logs/quicklog.log")),
+            clock: Box::new(QuantaClock::new()),
         }
     }
 }
 
-/// Sync is implemented for Quicklog as the underlying queue used is `mpsc` and
-/// the queue would be thread safe on sharing
-unsafe impl Send for Quicklog {}
-unsafe impl Sync for Quicklog {}
-
 impl Log for Quicklog {
-    fn log(&self, display: Container<dyn Display>) -> SendResult {
+    fn log(&self, display: Box<dyn Display>) -> SendResult {
         match unsafe {
             SENDER
                 .get_mut()
@@ -326,7 +356,7 @@ impl Log for Quicklog {
                         .expect("Unable to get time from instant"),
                     disp
                 );
-                self.flusher.flush(log_line);
+                self.flusher.flush_one(log_line);
                 Ok(())
             }
             None => Err(FlushError::Empty),
@@ -357,7 +387,7 @@ mod tests {
     }
 
     impl Flush for VecFlusher {
-        fn flush(&mut self, display: String) {
+        fn flush_one(&mut self, display: String) {
             self.vec.push(display);
         }
     }

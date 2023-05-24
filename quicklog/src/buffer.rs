@@ -27,6 +27,7 @@ cfg_if::cfg_if! {
                 }
             }
 
+            /// updates the read index and checks if read has overrun write
             pub fn dealloc(&mut self, chunk_size: usize) {
                 let new_val = self.read_idx.fetch_add(chunk_size, Ordering::Release);
                 if new_val + chunk_size > MAX_SERIALIZE_BUFFER_CAPACITY {

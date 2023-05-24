@@ -5,16 +5,18 @@ use std::{
 
 use crate::Flush;
 
+/// Flushes into a file
 pub struct FileFlusher(&'static str);
 
 impl FileFlusher {
-    pub fn new(name: &'static str) -> FileFlusher {
-        FileFlusher(name)
+    /// Flushes into file with specified path
+    pub fn new(path: &'static str) -> FileFlusher {
+        FileFlusher(path)
     }
 }
 
 impl Flush for FileFlusher {
-    fn flush(&mut self, display: String) {
+    fn flush_one(&mut self, display: String) {
         match OpenOptions::new().create(true).append(true).open(self.0) {
             Ok(file) => {
                 let mut writer = LineWriter::new(file);

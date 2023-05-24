@@ -37,7 +37,7 @@
 //! * `release_max_level_debug`
 //! * `release_max_level_trace`
 //!
-//! These features control the value of the `STATIC_MAX_LEVEL` constant. The
+//! These features control the value of the const [`MAX_LOG_LEVEL`] constant. The
 //! log macros check this value before logging. By default, no levels are disabled.
 //!
 //! For example, a crate can disable trace level logs in debug builds
@@ -48,6 +48,15 @@
 //! [dependencies]
 //! quicklog = { version = "0.1", features = ["max_level_debug", "release_max_level_warn"] }
 //! ```
+//!
+//! [`Trace`]: crate::level::Level::Trace
+//! [`Debug`]: crate::level::Level::Debug
+//! [`Info`]: crate::level::Level::Info
+//! [`Warn`]: crate::level::Level::Warn
+//! [`Error`]: crate::level::Level::Error
+//! [`Level`]: crate::level::Level
+//! [`LevelFilter`]: crate::level::LevelFilter
+//! [`MAX_LOG_LEVEL`]: crate::level::MAX_LOG_LEVEL
 
 use std::fmt::Display;
 

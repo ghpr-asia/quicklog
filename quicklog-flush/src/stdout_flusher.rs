@@ -1,5 +1,6 @@
 use crate::Flush;
 
+/// Flushes into stdout
 pub struct StdoutFlusher;
 
 impl StdoutFlusher {
@@ -15,7 +16,7 @@ impl Default for StdoutFlusher {
 }
 
 impl Flush for StdoutFlusher {
-    fn flush(&mut self, display: String) {
+    fn flush_one(&mut self, display: String) {
         print!("{}", display);
     }
 }

@@ -8,10 +8,20 @@ macro_rules! with_flush {
     }};
 }
 
+/// Flushes log lines into the file path specified
+#[macro_export]
+macro_rules! with_flush_into_file {
+    ($file_path:expr) => {{
+        use quicklog_flush::FileFlusher;
+        let flusher = FileFlusher::new($file_path);
+        $crate::logger().use_flush($crate::make_container!(flusher));
+    }};
+}
+
 /// Initializes Quicklog by calling [`Quicklog::init()`]
 /// Should only be called once in the application
 ///
-/// [`Quicklog::init()`]: `crate::Quicklog
+/// [`Quicklog::init()`]: crate::Quicklog::init
 #[macro_export]
 macro_rules! init {
     () => {
@@ -35,12 +45,11 @@ macro_rules! with_clock {
 #[macro_export]
 macro_rules! make_container {
     ($item:expr) => {
-        $crate::Container::new($item)
+        std::boxed::Box::new($item)
     };
 }
 
-/// Calls `try_log` and unwraps result
-#[doc(hidden)]
+/// Calls `try_log` and discards any errors
 #[macro_export]
 macro_rules! log {
   ($lvl:expr, $static_str:literal) => {
@@ -72,7 +81,8 @@ macro_rules! is_level_enabled {
 #[macro_export]
 macro_rules! make_store {
   ($serializable:expr) => {{
-    cfg_if::cfg_if! {
+    use cfg_if::cfg_if;
+    cfg_if! {
       if #[cfg(debug_assertions)] {
             std::sync::Arc::new($serializable.encode($crate::serialize::get_chunk_as_mut($serializable.buffer_size_required())))
       } else {
@@ -82,9 +92,8 @@ macro_rules! make_store {
   }};
 }
 
-/// Internal API that runs log and returns a Result, matches either a literal
-/// or a literal with some arguments.
-#[doc(hidden)]
+/// Runs log and returns a Result, matches either a literal / or a literal with some arguments
+/// which are matched recursively.
 #[macro_export]
 macro_rules! try_log {
   // === no args
@@ -322,18 +331,6 @@ macro_rules! try_log {
 }
 
 /// Allows flushing onto an implementor of [`Flush`], which can be modified with
-/// [`with_flush!`] macro, and passing in of a timeout.
-///
-/// [`Flush`]: `quicklog_flush::Flush`
-#[macro_export]
-macro_rules! try_flush_with_timeout {
-    ($timeout:expr) => {{
-        use $crate::Log;
-        $crate::logger().flush(Some(timeout))
-    }};
-}
-
-/// Allows flushing onto an implementor of [`Flush`], which can be modified with
 /// [`with_flush!`] macro and returns [`RecvResult`]
 ///
 /// [`Flush`]: quicklog_flush::Flush
@@ -347,13 +344,13 @@ macro_rules! try_flush {
 }
 
 /// Allows flushing onto an implementor of [`Flush`], which can be modified with
-/// [`with_flush!`] macro and unwraps result from [`try_flush`]
+/// [`with_flush!`] macro and unwraps and ignores errors from [`try_flush`]
 ///
 /// [`Flush`]: `quicklog_flush::Flush`
 #[macro_export]
 macro_rules! flush {
     () => {
-        $crate::try_flush!().unwrap();
+        $crate::try_flush!().unwrap_or(());
     };
 }
 

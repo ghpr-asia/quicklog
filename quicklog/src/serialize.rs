@@ -2,9 +2,9 @@ use std::{fmt::Display, str::from_utf8};
 
 use crate::buffer;
 
-/// Private level API to get a chunk from buffer
+/// Internal API to get a chunk from buffer
 ///
-/// ! DANGER
+/// <strong>DANGER</strong>
 ///
 /// In release, the [`TAIL`] wraps around back to the start of the buffer when
 /// there isn't sufficient space left inside of [`BUFFER`]. If this happens,
@@ -37,7 +37,7 @@ cfg_if::cfg_if! {
         /// Contains the decode function required to decode `buffer` back into a `String`
         /// representation.
         ///
-        /// Store **SHOULD NOT** implement `Clone`, in debug, otherwise, there might be
+        /// In debug, Store **SHOULD NOT** implement `Clone`, in debug, otherwise, there might be
         /// double updating of the tail of the buffer in `Drop` causing the tail to overrun
         /// the head, even though it actually did not
         pub struct Store {
@@ -123,7 +123,7 @@ pub fn encode_str(val: &str, write_buf: &'static mut [u8]) -> Store {
     Store::new(decode, write_buf)
 }
 
-/// Eager evaluation of String!
+/// Eager evaluation into a String for debug structs
 pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &'static mut [u8]) -> Store {
     let val_string = format!("{:?}", val);
     assert!(val_string.len() == write_buf.len());

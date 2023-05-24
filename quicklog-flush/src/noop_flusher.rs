@@ -15,5 +15,5 @@ impl Default for NoopFlusher {
 }
 
 impl Flush for NoopFlusher {
-    fn flush(&mut self, _display: String) {}
+    fn flush_one(&mut self, _display: String) {}
 }
