@@ -3,11 +3,12 @@ name = "quicklog-flush"
 description = "contains Flusher for quicklog logger"
 documentation = "https://docs.rs/quicklog-flush"
 repository = "https://github.com/ghpr-asia/quicklog"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 license = "Apache-2.0"
 keywords = ["quicklog", "logger"]
 workspace = "../"
+readme = "../README.md"
 
 [badges]
 maintenance = { status = "actively-developed" }

@@ -65,7 +65,13 @@ pub const MAX_SERIALIZE_BUFFER_CAPACITY: usize = {};
 
     // Write the code to a file
     let dest_path = std::path::Path::new("").join("src/constants.rs");
-    let mut file = File::create(dest_path).expect("Failed to create file");
-    file.write_all(rust_code.as_bytes())
-        .expect("Failed to write file");
+    match File::create(dest_path) {
+        Ok(mut file) => {
+            if let Err(err) = file.write_all(rust_code.as_bytes()) {
+                println!("cargo:warning={}", err)
+            }
+        }
+
+        Err(err) => println!("cargo:warning={}", err),
+    }
 }

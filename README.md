@@ -14,6 +14,23 @@ Flushing is deferred until `flush!()` macro is called.
 
 While `tracing` is a popular library for event tracing and are really good at what they do, `quicklog` is optimized for low callsite latency, paying the cost of formatting and I/O on a separate thread, away from the hot path.
 
+## Installation
+
+#### Install using Cargo
+
+```bash
+cargo add quicklog
+```
+
+#### Add to Cargo.toml
+
+```toml
+# Cargo.toml
+[dependencies]
+quicklog = "0.1.15"
+# ...
+```
+
 ## Usage
 
 ### Quick Start
