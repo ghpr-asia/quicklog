@@ -1,6 +1,6 @@
 [package]
 name = "quicklog"
-version = "0.1.15"
+version = "0.1.16"
 edition = "2021"
 description = "contains Clock for quicklog logger"
 documentation = "https://docs.rs/quicklog"
@@ -30,7 +30,7 @@ release_max_level_trace = []
 
 [dependencies]
 lazy_format = "2.0.0"
-quicklog-clock = { path = "../quicklog-clock", version = "0.1.1" }
+quicklog-clock = { path = "../quicklog-clock", version = "0.1.2" }
 quicklog-flush = { path = "../quicklog-flush", version = "0.1.2" }
 quanta = "0.10.1"
 once_cell = "1.17.1"
