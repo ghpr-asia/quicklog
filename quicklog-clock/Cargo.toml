@@ -1,8 +1,17 @@
 [package]
 name = "quicklog-clock"
+description = "contains Clock for quicklog logger"
+documentation = "https://docs.rs/quicklog-flush"
+repository = "https://github.com/ghpr-asia/quicklog"
 version = "0.1.1"
 edition = "2021"
+license = "Apache-2.0"
+keywords = ["quicklog", "logger"]
+workspace = "../"
 
 [dependencies]
 chrono = "0.4.24"
 quanta = "0.10.1"
+
+[badges]
+maintenance = { status = "actively-developed" }
