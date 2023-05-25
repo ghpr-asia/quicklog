@@ -1,6 +1,6 @@
 use std::{fmt::Display, str::from_utf8};
 
-use crate::buffer;
+pub mod buffer;
 
 /// Internal API to get a chunk from buffer
 ///

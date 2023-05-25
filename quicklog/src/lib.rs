@@ -207,20 +207,17 @@
 use heapless::spsc::Queue;
 use once_cell::unsync::{Lazy, OnceCell};
 use quanta::Instant;
+use serialize::buffer::{Buffer, BUFFER};
 use std::fmt::Display;
 
 use quicklog_clock::{quanta::QuantaClock, Clock};
 use quicklog_flush::{file_flusher::FileFlusher, Flush};
 
-/// contains buffer used in [`serialize`]
-///
-/// [`serialize`]: crate::serialize
-pub mod buffer;
 /// contains logging levels and filters
 pub mod level;
 /// contains macros
 pub mod macros;
-/// contains trait for serialization and pre-generated impl for common types
+/// contains trait for serialization and pre-generated impl for common types and buffer
 pub mod serialize;
 
 include!("constants.rs");
@@ -304,7 +301,7 @@ impl Quicklog {
     /// Initializes buffer for static serialization
     fn init_buffer() {
         unsafe {
-            buffer::BUFFER.set(buffer::Buffer::new()).ok();
+            BUFFER.set(Buffer::new()).ok();
         }
     }
 
