@@ -1,8 +1,8 @@
 [package]
 name = "quicklog"
-version = "0.1.17"
+version = "0.1.18"
 edition = "2021"
-description = "contains Clock for quicklog logger"
+description = "fast logging in Rust"
 documentation = "https://docs.rs/quicklog"
 repository = "https://github.com/ghpr-asia/quicklog"
 license = "Apache-2.0"
