@@ -1,5 +1,6 @@
 [package]
 name = "quicklog-clock"
+
 description = "contains Clock for quicklog logger"
 documentation = "https://docs.rs/quicklog-clock"
 repository = "https://github.com/ghpr-asia/quicklog"
