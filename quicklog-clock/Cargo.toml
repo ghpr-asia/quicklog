@@ -1,7 +1,7 @@
 [package]
 name = "quicklog-clock"
 description = "contains Clock for quicklog logger"
-documentation = "https://docs.rs/quicklog-flush"
+documentation = "https://docs.rs/quicklog-clock"
 repository = "https://github.com/ghpr-asia/quicklog"
 version = "0.1.1"
 edition = "2021"
