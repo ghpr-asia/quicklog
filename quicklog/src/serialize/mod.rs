@@ -32,27 +32,12 @@ pub trait Serialize {
 /// Function pointer which decodes a byte buffer back into `String` representation
 pub type DecodeFn = fn(&[u8]) -> String;
 
-cfg_if::cfg_if! {
-    if #[cfg(debug_assertions)] {
-        /// Contains the decode function required to decode `buffer` back into a `String`
-        /// representation.
-        ///
-        /// In debug, Store **SHOULD NOT** implement `Clone`, in debug, otherwise, there might be
-        /// double updating of the tail of the buffer in `Drop` causing the tail to overrun
-        /// the head, even though it actually did not
-        pub struct Store {
-            decode_fn: DecodeFn,
-            buffer: &'static [u8],
-        }
-    } else {
-        /// Contains the decode function required to decode `buffer` back into a `String`
-        /// representation.
-        #[derive(Clone)]
-        pub struct Store {
-            decode_fn: DecodeFn,
-            buffer: &'static [u8],
-        }
-    }
+/// Contains the decode function required to decode `buffer` back into a `String`
+/// representation.
+#[derive(Clone)]
+pub struct Store {
+    decode_fn: DecodeFn,
+    buffer: &'static [u8],
 }
 
 impl Store {
@@ -68,24 +53,6 @@ impl Store {
 impl Display for Store {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_string())
-    }
-}
-
-cfg_if::cfg_if! {
-    if #[cfg(debug_assertions)] {
-        impl Drop for Store {
-            /// Increments the buffer read_idx by length of buffer acquired, since we are
-            /// always guaranteed to read in-order from front to back, this is safe,
-            /// unless Store gets cloned, this only happens in Debug
-            fn drop(&mut self) {
-                unsafe {
-                    buffer::BUFFER
-                        .get_mut()
-                        .expect("Unable to get BUFFER, has it been init?")
-                        .dealloc(self.buffer.len())
-                }
-            }
-        }
     }
 }
 

@@ -80,16 +80,11 @@ macro_rules! is_level_enabled {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! make_store {
-  ($serializable:expr) => {{
-    use cfg_if::cfg_if;
-    cfg_if! {
-      if #[cfg(debug_assertions)] {
-            std::sync::Arc::new($serializable.encode($crate::serialize::get_chunk_as_mut($serializable.buffer_size_required())))
-      } else {
-            $serializable.encode($crate::serialize::get_chunk_as_mut($serializable.buffer_size_required()))
-      }
-    }
-  }};
+    ($serializable:expr) => {
+        $serializable.encode($crate::serialize::get_chunk_as_mut(
+            $serializable.buffer_size_required(),
+        ))
+    };
 }
 
 /// Runs log and returns a Result, matches either a literal / or a literal with some arguments
