@@ -80,6 +80,8 @@
 //! you might not want to log. This functionality can be done through implementing the
 //! [`Serialize`] trait, where you can implement how to copy which parts of the struct.
 //!
+//! The [`Serialize`] trait could be called upon with the `^` prefix.
+//!
 //! This could additionally be helpful if you already have the struct inside a buffer in byte
 //! form, as you could simply pass the buffer directly into the decode fn, eliminiating any
 //! need to copy.
@@ -129,6 +131,11 @@
 //! be used in combination with `%` and `?` prefix on args to eagerly evaluate
 //! expressions into format strings.
 //!
+//! **Note:** Do not use this if speed is a concern. This eagerly formats through the
+//! `Display` trait by default if no prefix is used and does not utilise the
+//! lazily evaluated capabilities of the normal logger. This is done because
+//! there will be 2 clones made.
+//!
 //! ```
 //! # use quicklog::{init, info};
 //! # fn main() {
@@ -143,10 +150,12 @@
 //!
 //! There are two environment variables you can set:
 //!
-//! 1. `QUICKLOG_MAX_LOGGER_CAPACITY`
-//!     - sets the size of the spsc ring buffer used for logging
-//! 2. `QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY`
-//!     - sets the size of the byte buffer used for static serialization
+//! 1. `QUICKLOG_MAX_LOGGER_CAPACITY_ITEMS`
+//!     - sets the maximum number of items in the spsc ring buffer used for logging
+//!     - each item is a tuple: (Instant, Box<dyn Display>), requiring 8 + 16 bytes each
+//!         - meaning 1m items would require 24m bytes to be available
+//! 2. `QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY_BYTES`
+//!     - sets the number of bytes in the static byte buffer used for serialization
 //!     - this can be increased when you run into issues out of memory in debug
 //!     when conducting load testing
 //!
@@ -170,7 +179,7 @@
 //! fn main() {
 //!     init!();
 //!
-//!     with_clock!(SomeClock::new());
+//!     with_clock!(SomeClock);
 //!
 //!     // logger now uses SomeClock for timestamping
 //!     info!("Hello, world!");
@@ -235,11 +244,11 @@ pub type Intermediate = (Instant, Box<dyn Display>);
 static mut LOGGER: Lazy<Quicklog> = Lazy::new(Quicklog::default);
 
 /// Producer side of queue
-pub type Sender = heapless::spsc::Producer<'static, Intermediate, MAX_LOGGER_CAPACITY>;
+pub type Sender = heapless::spsc::Producer<'static, Intermediate, MAX_LOGGER_CAPACITY_ITEMS>;
 /// Result from pushing onto queue
 pub type SendResult = Result<(), Intermediate>;
 /// Consumer side of queue
-pub type Receiver = heapless::spsc::Consumer<'static, Intermediate, MAX_LOGGER_CAPACITY>;
+pub type Receiver = heapless::spsc::Consumer<'static, Intermediate, MAX_LOGGER_CAPACITY_ITEMS>;
 /// Result from trying to pop from logging queue
 pub type RecvResult = Result<(), FlushError>;
 
@@ -307,7 +316,7 @@ impl Quicklog {
 
     /// Initializes channel for main logging queue
     fn init_channel() {
-        static mut QUEUE: Queue<Intermediate, MAX_LOGGER_CAPACITY> = Queue::new();
+        static mut QUEUE: Queue<Intermediate, MAX_LOGGER_CAPACITY_ITEMS> = Queue::new();
         let (sender, receiver): (Sender, Receiver) = unsafe { QUEUE.split() };
         unsafe {
             SENDER.set(sender).ok();
