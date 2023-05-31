@@ -124,7 +124,7 @@ macro_rules! try_log {
 
         // allow unused_parens for case with 1 single field
         #[allow(unused_parens)]
-        let ($([<$($field)*>]),*) = ($(($args).to_owned()),*);
+        let ($([<$($field)*>]),*) = ($(($args).clone()),*);
 
         let log_line = lazy_format::make_lazy_format!(|f| {
           write!(f, concat!("[{}]\t", $static_str), $lvl, $([<$($field)*>]),*)
@@ -153,82 +153,50 @@ macro_rules! try_log {
   // 1. `literal     = expr` arg
   // 2. `$($ident).+ = expr` arg
   // for 1 and 2, there are 4 sub cases:
-  //    a. &expr - reference argument where we need to clone
-  //    b. %expr - eager format into Display
-  //    c. ?expr - eager format into Debug
-  //    d. ^expr - serialize
-  //    e.  expr - no special handling required
+  //    a. %expr - eager format into Display
+  //    b. ?expr - eager format into Debug
+  //    c.  expr - eager format into Display
   // 3. no prefix  -  $next: own and pass to lazy_format
   // 4. `%` prefix - %$next: eagerly format object that implements Display
   // 5. `?` prefix - ?$next: eagerly format object that implements Debug
   // 6. `^` prefix - #$next: implemenets serialize trait, simply clone the Store
 
-  // case 1a: match `literal = &expr` argument, where argument is a reference
-  // example: info!("some string field {}", "string field here" = &some_variable)
-  // we need to own the argument before we can pass it into the lazy_format closure
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $key:literal = &$next:expr, $($rest:tt)*) => {{
-    let arg = (&$next).to_owned();
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", $key, arg) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
-  }};
-
-  // case 1b: match `literal = %expr` argument, eagerly format expr into Display
+  // case 1a: match `literal = %expr` argument, eagerly format expr into Display
   // example: info!("some string field {}", "string field here" = %some_variable)
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $key:literal = %$next:expr, $($rest:tt)*) => {
     $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={}", $key, $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
   };
 
-  // case 1c: match `literal = ?expr` argument, eagerly format expr into Debug
+  // case 1b: match `literal = ?expr` argument, eagerly format expr into Debug
   // example: info!("some string field {}", "string field here" = ?some_variable)
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $key:literal = ?$next:expr, $($rest:tt)*) => {
     $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={:?}", $key, $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
   };
 
-  // case 1d: match `literal = ^expr` argument, where argument impls `Serialize`
-  // example: info!("some string field {}", "string field here" = ^some_variable)
-  // we need to own the argument before we can pass it into the lazy_format closure
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $key:literal = ^$next:expr, $($rest:tt)*) => {{
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", $key, $crate::make_store!($next)) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
-  }};
-
-  // case 1e: match `literal = expr` argument, normal argument pass by move
+  // case 1c: match `literal = expr` argument, eagerly format into Display
   // example: info!("some string field {}", "string field here" = some_variable)
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $key:literal = $next:expr, $($rest:tt)*) => {
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", $key, $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={}", $key, $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
   };
 
-  // case 2a: match `ident.ident1.ident2 = &expr` argument, where expr represents a reference
-  // example: info!("some nested ident {}", some.nested.field.of.idents = &some_expr)
-  // we need to own the argument first
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $($key:ident).+ = &$next:expr, $($rest:tt)*) => {{
-    let arg = (&$next).to_owned();
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", stringify!($($key).+), arg) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
-  }};
-
-  // case 2b: match `ident.ident1.ident2 = %expr` argument, eagerly format expr into Display
+  // case 2a: match `ident.ident1.ident2 = %expr` argument, eagerly format expr into Display
   // example: info!("some nested ident {}", some.nested.field.of.idents = %some_expr)
   // we need to own the argument first
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $($key:ident).+ = %$next:expr, $($rest:tt)*) => {
     $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={}", stringify!($($key).+), $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
   };
 
-  // case 2c: match `ident.ident1.ident2 = ?expr` argument, eagerly format expr into Debug
+  // case 2b: match `ident.ident1.ident2 = ?expr` argument, eagerly format expr into Debug
   // example: info!("some nested ident {}", some.nested.field.of.idents = ?some_expr)
   // we need to own the argument first
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $($key:ident).+ = ?$next:expr, $($rest:tt)*) => {
     $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={}", stringify!($($key).+), $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
   };
 
-  // case 2d: match `ident.ident1.ident2 = ^expr` argument, where argument implements Serialize
-  // example: info!("some nested ident {}", some.nested.field.of.idents = ^some_expr)
-  // we need to own the argument first
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $($key:ident).+ = ^$next:expr, $($rest:tt)*) => {{
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", stringify!($($key).+), $crate::make_store!($next)) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
-  }};
-
-  // case 2e: match `ident.ident1.ident2 = expr` argument
+  // case 2c: match `ident.ident1.ident2 = expr` argument
   // example: info!("some nested ident {}", some.nested.field.of.idents = some_expr)
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $($key:ident).+ = $next:expr, $($rest:tt)*) => {
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", stringify!($($key).+), $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={}", stringify!($($key).+), $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
   };
 
   // case 3: no prefix - own and pass to lazy_format
@@ -257,56 +225,34 @@ macro_rules! try_log {
 
   // last recursive case - no more $($rest)* to recurse over
 
-  // case 1a - ref &$next
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $key:literal = &$next:expr) => {{
-    let arg = (&$next).to_owned();
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", $key, arg) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
-  }};
-
-  // case 1b - %$next
+  // case 1a - %$next
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $key:literal = %$next:expr) => {
     $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={}", $key, $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
   };
 
-  // case 1c - ?$next
+  // case 1b - ?$next
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $key:literal = ?$next:expr) => {
     $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={:?}", $key, $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
   };
 
-  // case 1d - ^$next
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $key:literal = ^$next:expr) => {
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", $key, $crate::make_store!($next)) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
-  };
-
-  // case 1e - move $next
+  // case 1c - $next
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $key:literal = $next:expr) => {
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", $key, $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={}", $key, $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
   };
 
-  // case 2a - ref &$next
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $($key:ident).+ = &$next:expr) => {{
-    let arg = (&$next).to_owned();
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", stringify!($($key).+), arg) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
-  }};
-
-  // case 2b - %$next
+  // case 2a - %$next
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $($key:ident).+ = %$next:expr) => {
     $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={}", stringify!($($key).+), &$next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
   };
 
-  // case 2c - ?$next
+  // case 2b - ?$next
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $($key:ident).+ = ?$next:expr) => {
     $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={:?}", stringify!($($key).+), $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
   };
 
-  // case 2d - ^$next
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $($key:ident).+ = ^$next:expr) => {{
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", stringify!($($key).+), $crate::make_store!($next)) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
-  }};
-
-  // case 2e - move $next
+  // case 2c - $next
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $($key:ident).+ = $next:expr) => {
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , lazy_format::lazy_format!("{}={}", stringify!($($key).+), $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}={}", stringify!($($key).+), $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
   };
 
   // case 3

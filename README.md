@@ -54,11 +54,11 @@ fn main() {
 }
 ```
 
-### Utilising `Serialize`
+### Utilising `Serialize` through the `^` prefix
 
-In order to avoid cloning a large struct, you can implement the `Serialize` trait.
+As cloning a large object could be expensive, you can define how you want to copy and format your object into a human-readable String through the `Serialize` trait.
 
-This allows you to copy specific parts of your struct onto a circular byte buffer and avoid copying the rest by encoding providing a function to decode your struct from a byte buffer.
+Use a `^` prefix before your variable and `quicklog` will serialize your item onto a static byte buffer through the `encode` method you defined and decode it at the flush site through the `decode` function you have included in the `Store` struct.
 
 For a complete example, refer to `~/quicklog/benches/logger_benchmark.rs`.
 
@@ -142,15 +142,6 @@ Measurements are made on a 2020 16 core M1 Macbook Air with 16 GB RAM.
 We are open to contributions and requests!
 
 Please post your bug reports or feature requests on [Github Issues](https://github.com/ghpr-asia/quicklog/issues).
-
-## Roadmap
-
-- [] add single-threaded and multi-threaded variants
-- [] Try to remove nested `lazy_format` in recursion
-- [] Check number of copies of data made in each log line and possibly reduce it
-- [] Review uses of unsafe code
-- [] Benchmark multi-threaded performance
-- [] Statically assert that strings inside Level and LevelFilter are the same size
 
 ## Authors and acknowledgment
 
