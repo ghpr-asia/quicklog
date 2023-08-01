@@ -19,36 +19,6 @@
 //! i.e. `Level::Debug` is skipped when LevelFilter is set to `Info`, but `Level::Info`
 //! logs will not be skipped.
 //!
-//! ### Compile time filter specification
-//!
-//! Level filter can be set at runtime, via Cargo features. This level is configured
-//! separately for release and debug builds through the following feature flags:
-//!
-//! * `max_level_off`
-//! * `max_level_error`
-//! * `max_level_warn`
-//! * `max_level_info`
-//! * `max_level_debug`
-//! * `max_level_trace`
-//! * `release_max_level_off`
-//! * `release_max_level_error`
-//! * `release_max_level_warn`
-//! * `release_max_level_info`
-//! * `release_max_level_debug`
-//! * `release_max_level_trace`
-//!
-//! These features control the value of the const [`MAX_LOG_LEVEL`] constant. The
-//! log macros check this value before logging. By default, no levels are disabled.
-//!
-//! For example, a crate can disable trace level logs in debug builds
-//! and trace, debug, and info level logs in release builds with the
-//! following configuration:
-//!
-//! ```toml
-//! [dependencies]
-//! quicklog = { version = "0.1", features = ["max_level_debug", "release_max_level_warn"] }
-//! ```
-//!
 //! [`Trace`]: crate::level::Level::Trace
 //! [`Debug`]: crate::level::Level::Debug
 //! [`Info`]: crate::level::Level::Info
@@ -56,9 +26,8 @@
 //! [`Error`]: crate::level::Level::Error
 //! [`Level`]: crate::level::Level
 //! [`LevelFilter`]: crate::level::LevelFilter
-//! [`MAX_LOG_LEVEL`]: crate::level::MAX_LOG_LEVEL
 
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 #[repr(usize)]
 #[derive(Clone, Copy, Eq, PartialEq, PartialOrd)]
@@ -99,8 +68,13 @@ pub enum LevelFilter {
     Warn = 3,
     /// Enables Error logs only
     Error = 4,
+    /// Event-level log-records are sets of key-value pairs that are
+    /// intended for machine processing.  The formatted log-message
+    /// should be a simple record tag, with all the variable data in
+    /// key-value pairs.
+    Event = 5,
     /// Disables all logging
-    Off = 5,
+    Off = 6,
 }
 
 impl Display for LevelFilter {
@@ -111,40 +85,38 @@ impl Display for LevelFilter {
     }
 }
 
-/// Statically configured maximum level, this is configured from Cargo.toml,
-/// by passing in the relevant feature flags
-/// By default, the level would be configured to LevelFilter::Trace
-pub const MAX_LOG_LEVEL: LevelFilter = MAX_LEVEL;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogLevelParseError();
 
-// Checks the feature flag specified by the user of the library, and sets the
-// const [`MAX_LEVEL`] accordingly. Defaults to `LevelFilter::Trace` if the
-// user does not specify any feature flag
-cfg_if::cfg_if! {
-    if #[cfg(all(not(debug_assertions), feature = "release_max_level_off"))] {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Off;
-    } else if #[cfg(all(not(debug_assertions), feature = "release_max_level_error"))] {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Error;
-    } else if #[cfg(all(not(debug_assertions), feature = "release_max_level_warn"))] {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Warn;
-    } else if #[cfg(all(not(debug_assertions), feature = "release_max_level_info"))] {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Info;
-    } else if #[cfg(all(not(debug_assertions), feature = "release_max_level_debug"))] {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Debug;
-    } else if #[cfg(all(not(debug_assertions), feature = "release_max_level_trace"))] {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Trace;
-    } else if #[cfg(feature = "max_level_off")] {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Off;
-    } else if #[cfg(feature = "max_level_error")] {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Error;
-    } else if #[cfg(feature = "max_level_warn")] {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Warn;
-    } else if #[cfg(feature = "max_level_info")] {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Info;
-    } else if #[cfg(feature = "max_level_debug")] {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Debug;
-    } else {
-        const MAX_LEVEL: LevelFilter = LevelFilter::Trace;
+impl FromStr for LevelFilter {
+    type Err = LogLevelParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "TRC" => Ok(Self::Trace),
+            "DBG" => Ok(Self::Debug),
+            "INF" => Ok(Self::Info),
+            "WRN" => Ok(Self::Warn),
+            "ERR" => Ok(Self::Error),
+            "OFF" => Ok(Self::Off),
+            "EVT" => Ok(Self::Event),
+            _ => Err(LogLevelParseError()),
+        }
     }
+}
+
+static mut MAX_LOG_LEVEL_FILTER: LevelFilter = LevelFilter::Trace;
+
+#[inline]
+pub fn set_max_level(level: LevelFilter) {
+    unsafe {
+        MAX_LOG_LEVEL_FILTER = level;
+    }
+}
+
+#[inline(always)]
+pub fn max_level() -> LevelFilter {
+    unsafe { MAX_LOG_LEVEL_FILTER }
 }
 
 #[cfg(test)]
