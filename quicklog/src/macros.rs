@@ -60,15 +60,12 @@ macro_rules! log {
   };
 }
 
-/// Checks if the current level we are trying to log is enabled by checking
-/// static [`MAX_LOG_LEVEL`] which is evaluated at compile time
-///
-/// [`MAX_LOG_LEVEL`]: crate::level::MAX_LOG_LEVEL
+/// Checks if the current level we are trying to log is enabled
 #[doc(hidden)]
 #[macro_export]
 macro_rules! is_level_enabled {
     ($level:expr) => {
-        $level as usize >= $crate::level::MAX_LOG_LEVEL as usize
+        $level as usize >= $crate::level::max_level() as usize
     };
 }
 
