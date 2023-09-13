@@ -205,9 +205,10 @@
 //! [`FileFlusher`]: quicklog_flush::file_flusher::FileFlusher
 
 use heapless::spsc::Queue;
-use once_cell::unsync::{Lazy, OnceCell};
+use once_cell::unsync::Lazy;
 use quanta::Instant;
 use serialize::buffer::{Buffer, BUFFER};
+use std::cell::OnceCell;
 use std::fmt::Display;
 
 use quicklog_clock::{quanta::QuantaClock, Clock};
