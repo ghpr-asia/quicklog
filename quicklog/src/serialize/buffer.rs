@@ -1,5 +1,5 @@
 use crate::constants::MAX_SERIALIZE_BUFFER_CAPACITY;
-use once_cell::unsync::OnceCell;
+use std::cell::OnceCell;
 
 static mut BYTE_BUFFER: [u8; MAX_SERIALIZE_BUFFER_CAPACITY] = [0_u8; MAX_SERIALIZE_BUFFER_CAPACITY];
 
