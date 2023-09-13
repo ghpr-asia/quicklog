@@ -25,8 +25,7 @@ variables:
   GIT_SUBMODULE_UPDATE_FLAGS: --jobs 4
   LIBCLANG_PATH: "/opt/clang130/lib64"
   GHP_IMAGE_LOCATION: us-central1
-
-
+  GHP_RUST_VERSION: "1.72.0"
 
 stages:
   - prep
@@ -37,7 +36,7 @@ stages:
 
 cache-newest:
   extends:
-    - .rust_latest
+    - .rust_version
     - .cargo_fetch_job
     - .build_tags_interns
     - .cargo_fetch_artifacts
@@ -45,7 +44,7 @@ cache-newest:
 
 stable-lint:
   extends:
-    - .rust_latest
+    - .rust_version
     - .cargo_clippy_job
     - .build_tags_interns
     - .run_always
@@ -56,7 +55,7 @@ stable-lint:
 
 stable-build-and-test:
   extends:
-    - .rust_latest
+    - .rust_version
     - .cargo_build_and_test_job
     - .build_tags_interns
     # - .cargo_build_artifacts
@@ -71,7 +70,7 @@ stable-build-and-test:
 
 deploy-crate:
   extends:
-    - .rust_latest
+    - .rust_version
     - .cargo_build_and_publish_job
     - .build_tags_interns
     # change to `.run_deployment_manual` if you want this step to be manual
