@@ -205,12 +205,15 @@
 //! [`FileFlusher`]: quicklog_flush::file_flusher::FileFlusher
 
 use heapless::spsc::Queue;
+use level::Level;
 use once_cell::unsync::Lazy;
 use quanta::Instant;
 use serialize::buffer::{Buffer, BUFFER};
-use std::cell::OnceCell;
-use std::fmt::Display;
+use std::{cell::OnceCell, fmt::Display};
 
+pub use std::{file, line, module_path};
+
+use chrono::{DateTime, Utc};
 use quicklog_clock::{quanta::QuantaClock, Clock};
 use quicklog_flush::{file_flusher::FileFlusher, Flush};
 
@@ -227,20 +230,20 @@ pub mod constants;
 
 /// Internal API
 ///
-/// Intermediate log item being stored into logging queue
+/// timed log item being stored into logging queue
 #[doc(hidden)]
-pub type Intermediate = (Instant, Box<dyn Display>);
+pub type TimedLogRecord = (Instant, LogRecord);
 
 /// Logger initialized to Quicklog
 #[doc(hidden)]
 static mut LOGGER: Lazy<Quicklog> = Lazy::new(Quicklog::default);
 
 /// Producer side of queue
-pub type Sender = heapless::spsc::Producer<'static, Intermediate, MAX_LOGGER_CAPACITY>;
+pub type Sender = heapless::spsc::Producer<'static, TimedLogRecord, MAX_LOGGER_CAPACITY>;
 /// Result from pushing onto queue
-pub type SendResult = Result<(), Intermediate>;
+pub type SendResult = Result<(), TimedLogRecord>;
 /// Consumer side of queue
-pub type Receiver = heapless::spsc::Consumer<'static, Intermediate, MAX_LOGGER_CAPACITY>;
+pub type Receiver = heapless::spsc::Consumer<'static, TimedLogRecord, MAX_LOGGER_CAPACITY>;
 /// Result from trying to pop from logging queue
 pub type RecvResult = Result<(), FlushError>;
 
@@ -252,10 +255,10 @@ static mut RECEIVER: OnceCell<Receiver> = OnceCell::new();
 /// Log is the base trait that Quicklog will implement.
 /// Flushing and formatting is deferred while logging.
 pub trait Log {
-    /// Dequeues a single line from logging queue and passes it to Flusher
+    /// Dequeues a single log record from logging queue and passes it to Flusher
     fn flush_one(&mut self) -> RecvResult;
-    /// Enqueues a single line onto logging queue
-    fn log(&self, display: Box<dyn Display>) -> SendResult;
+    /// Enqueues a single log record onto logging queue
+    fn log(&self, record: LogRecord) -> SendResult;
 }
 
 /// Errors that can be presented when flushing
@@ -273,10 +276,42 @@ pub fn logger() -> &'static mut Quicklog {
     unsafe { &mut LOGGER }
 }
 
+pub struct LogRecord {
+    /// Level
+    pub level: Level,
+    /// Module path
+    pub module_path: &'static str,
+    /// File
+    pub file: &'static str,
+    /// Line
+    pub line: u32,
+    /// Log line captured by using LazyFormat which implements Display trait.
+    pub log_line: Box<dyn Display>,
+}
+
+pub trait PatternFormatter {
+    fn custom_format(&mut self, time: DateTime<Utc>, log_record: LogRecord) -> String;
+}
+
+pub struct QuickLogFormatter;
+
+impl QuickLogFormatter {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl PatternFormatter for QuickLogFormatter {
+    fn custom_format(&mut self, time: DateTime<Utc>, object: LogRecord) -> String {
+        format!("[{:?}]{}\n", time, object.log_line)
+    }
+}
+
 /// Quicklog implements the Log trait, to provide logging
 pub struct Quicklog {
     flusher: Box<dyn Flush>,
     clock: Box<dyn Clock>,
+    formatter: Box<dyn PatternFormatter>,
 }
 
 impl Quicklog {
@@ -284,6 +319,10 @@ impl Quicklog {
     #[doc(hidden)]
     pub fn use_flush(&mut self, flush: Box<dyn Flush>) {
         self.flusher = flush
+    }
+
+    pub fn use_formatter(&mut self, formatter: Box<dyn PatternFormatter>) {
+        self.formatter = formatter
     }
 
     /// Sets which flusher to be used, used in [`with_clock!`]
@@ -308,7 +347,7 @@ impl Quicklog {
 
     /// Initializes channel for main logging queue
     fn init_channel() {
-        static mut QUEUE: Queue<Intermediate, MAX_LOGGER_CAPACITY> = Queue::new();
+        static mut QUEUE: Queue<TimedLogRecord, MAX_LOGGER_CAPACITY> = Queue::new();
         let (sender, receiver): (Sender, Receiver) = unsafe { QUEUE.split() };
         unsafe {
             SENDER.set(sender).ok();
@@ -322,17 +361,18 @@ impl Default for Quicklog {
         Quicklog {
             flusher: Box::new(FileFlusher::new("logs/quicklog.log")),
             clock: Box::new(QuantaClock::new()),
+            formatter: Box::new(QuickLogFormatter::new()),
         }
     }
 }
 
 impl Log for Quicklog {
-    fn log(&self, display: Box<dyn Display>) -> SendResult {
+    fn log(&self, record: LogRecord) -> SendResult {
         match unsafe {
             SENDER
                 .get_mut()
                 .expect("Sender is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
-                .enqueue((self.clock.get_instant(), display))
+                .enqueue((self.clock.get_instant(), record))
         } {
             Ok(_) => Ok(()),
             Err(err) => Err(err),
@@ -346,13 +386,12 @@ impl Log for Quicklog {
                     .expect("RECEIVER is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
                     .dequeue()
         } {
-            Some((time_logged, disp)) => {
-                let log_line = format!(
-                    "[{:?}]{}\n",
+            Some((time_logged, record)) => {
+                let log_line = self.formatter.custom_format(
                     self.clock
                         .compute_system_time_from_instant(time_logged)
                         .expect("Unable to get time from instant"),
-                    disp
+                    record,
                 );
                 self.flusher.flush_one(log_line);
                 Ok(())
@@ -366,13 +405,31 @@ impl Log for Quicklog {
 mod tests {
     use std::{str::from_utf8, sync::Mutex};
 
+    use chrono::{DateTime, Utc};
     use quicklog_flush::Flush;
 
     use crate::{
         debug, error, flush, info,
         serialize::{Serialize, Store},
-        trace, warn,
+        trace, warn, LogRecord, PatternFormatter,
     };
+
+    pub struct TestFormatter;
+
+    impl TestFormatter {
+        fn new() -> Self {
+            Self {}
+        }
+    }
+
+    impl PatternFormatter for TestFormatter {
+        fn custom_format(&mut self, time: DateTime<Utc>, log_record: LogRecord) -> String {
+            format!(
+                "[{:?}][{}]\t{}\n",
+                time, log_record.level, log_record.log_line
+            )
+        }
+    }
 
     struct VecFlusher {
         pub vec: &'static mut Vec<String>,
@@ -428,6 +485,7 @@ mod tests {
             static mut VEC: Vec<String> = Vec::new();
             let vec_flusher = unsafe { VecFlusher::new(&mut VEC) };
             crate::logger().use_flush(Box::new(vec_flusher));
+            crate::logger().use_formatter(Box::new(TestFormatter::new()))
         };
     }
 

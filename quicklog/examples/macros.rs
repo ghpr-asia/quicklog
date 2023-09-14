@@ -1,4 +1,7 @@
-use quicklog::{debug, error, flush, info, trace, warn, with_flush};
+use quicklog::{
+    debug, error, info, init, trace, try_flush, warn, with_flush, with_formatter, LogRecord,
+    PatternFormatter,
+};
 use quicklog_flush::stdout_flusher::StdoutFlusher;
 
 #[derive(Clone)]
@@ -12,8 +15,25 @@ impl std::fmt::Display for S {
     }
 }
 
+struct CustomFormatter;
+
+impl PatternFormatter for CustomFormatter {
+    fn custom_format(
+        &mut self,
+        time: chrono::DateTime<chrono::Utc>,
+        log_record: LogRecord,
+    ) -> String {
+        format!(
+            "[{:?}][{}][{}][{}]{}\n",
+            time, log_record.file, log_record.line, log_record.level, log_record.log_line,
+        )
+    }
+}
+
 fn main() {
+    init!();
     with_flush!(StdoutFlusher);
+    with_formatter!(CustomFormatter);
 
     trace!("hello world! {} {} {}", 2, 3, 4);
     trace!("hello, world");
@@ -46,5 +66,5 @@ fn main() {
         s_0, s_1, s_2, s_3, s_4, s_5, s_6, s_7, s_8, s_9, s_10
     );
 
-    flush!();
+    while let Ok(()) = try_flush!() {}
 }

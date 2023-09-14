@@ -8,6 +8,16 @@ macro_rules! with_flush {
     }};
 }
 
+/// Used to amend which `PatternFormatter` is currently attached to `Quicklog`
+/// An implementation can be passed in at runtime as long as it
+/// adheres to the `PatternFormatter` trait in `quicklog-formatter`
+#[macro_export]
+macro_rules! with_formatter {
+    ($formatter:expr) => {{
+        $crate::logger().use_formatter($crate::make_container!($formatter))
+    }};
+}
+
 /// Flushes log lines into the file path specified
 #[macro_export]
 macro_rules! with_flush_into_file {
@@ -93,9 +103,16 @@ macro_rules! try_log {
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, make_container};
 
-      let log_line = lazy_format::lazy_format!("[{}]\t{}", $lvl, $static_str);
 
-      $crate::logger().log(make_container!(log_line))
+      let log_record = $crate::LogRecord {
+        level: $lvl,
+        module_path:$crate::module_path!(),
+        file: $crate::file!(),
+        line: $crate::line!(),
+        log_line: make_container!(lazy_format::lazy_format!("{}", $static_str)),
+      };
+
+      $crate::logger().log(log_record)
     } else {
       Ok(())
     }
@@ -118,11 +135,19 @@ macro_rules! try_log {
         #[allow(unused_parens)]
         let ($([<$($field)*>]),*) = ($(($args).to_owned()),*);
 
-        let log_line = lazy_format::make_lazy_format!(|f| {
-          write!(f, concat!("[{}]\t", $static_str), $lvl, $([<$($field)*>]),*)
-        });
+        let log_record = $crate::LogRecord {
+            level: $lvl,
+            module_path:$crate::module_path!(),
+            file: $crate::file!(),
+            line: $crate::line!(),
+            log_line: make_container!(lazy_format::make_lazy_format!(|f| {
+              write!(f,  $static_str,  $([<$($field)*>]),*)
+            })),
+          };
 
-        $crate::logger().log(make_container!(log_line))
+
+
+        $crate::logger().log(log_record)
       } else {
         Ok(())
       }
