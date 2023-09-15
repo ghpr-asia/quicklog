@@ -533,23 +533,23 @@ mod tests {
 
         assert_message_with_level_equal!(
             trace!("Hello world {}", "Another"),
-            format!("[TRACE]\tHello world {}", "Another")
+            format!("[TRC]\tHello world {}", "Another")
         );
         assert_message_with_level_equal!(
             debug!("Hello world {}", "Another"),
-            format!("[DEBUG]\tHello world {}", "Another")
+            format!("[DBG]\tHello world {}", "Another")
         );
         assert_message_with_level_equal!(
             info!("Hello world {}", "Another"),
-            format!("[INFO]\tHello world {}", "Another")
+            format!("[INF]\tHello world {}", "Another")
         );
         assert_message_with_level_equal!(
             warn!("Hello world {}", "Another"),
-            format!("[WARN]\tHello world {}", "Another")
+            format!("[WRN]\tHello world {}", "Another")
         );
         assert_message_with_level_equal!(
             error!("Hello world {}", "Another"),
-            format!("[ERROR]\tHello world {}", "Another")
+            format!("[ERR]\tHello world {}", "Another")
         );
     }
 
