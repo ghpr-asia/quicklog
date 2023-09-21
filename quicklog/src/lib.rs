@@ -211,6 +211,7 @@ use quanta::Instant;
 use serialize::buffer::{Buffer, BUFFER};
 use std::{cell::OnceCell, fmt::Display};
 
+pub use ::lazy_format;
 pub use std::{file, line, module_path};
 
 use chrono::{DateTime, Utc};
