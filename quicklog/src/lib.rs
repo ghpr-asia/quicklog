@@ -208,7 +208,7 @@ use heapless::spsc::Queue;
 use level::Level;
 use once_cell::unsync::Lazy;
 use quanta::Instant;
-use serialize::buffer::{Buffer, BUFFER};
+use serialize::buffer::ByteBuffer;
 use std::{cell::OnceCell, fmt::Display};
 
 pub use ::lazy_format;
@@ -248,18 +248,13 @@ pub type Receiver = heapless::spsc::Consumer<'static, TimedLogRecord, MAX_LOGGER
 /// Result from trying to pop from logging queue
 pub type RecvResult = Result<(), FlushError>;
 
-/// Sender handles sending into the mpsc queue
-static mut SENDER: OnceCell<Sender> = OnceCell::new();
-/// Receiver handles flushing from mpsc queue
-static mut RECEIVER: OnceCell<Receiver> = OnceCell::new();
-
 /// Log is the base trait that Quicklog will implement.
 /// Flushing and formatting is deferred while logging.
 pub trait Log {
     /// Dequeues a single log record from logging queue and passes it to Flusher
     fn flush_one(&mut self) -> RecvResult;
     /// Enqueues a single log record onto logging queue
-    fn log(&self, record: LogRecord) -> SendResult;
+    fn log(&mut self, record: LogRecord) -> SendResult;
 }
 
 /// Errors that can be presented when flushing
@@ -313,6 +308,9 @@ pub struct Quicklog {
     flusher: Box<dyn Flush>,
     clock: Box<dyn Clock>,
     formatter: Box<dyn PatternFormatter>,
+    sender: OnceCell<Sender>,
+    receiver: OnceCell<Receiver>,
+    byte_buffer: ByteBuffer,
 }
 
 impl Quicklog {
@@ -334,26 +332,26 @@ impl Quicklog {
 
     /// Initializes channel inside of quicklog, can be called
     /// through [`init!`] macro
-    pub fn init() {
-        Quicklog::init_channel();
-        Quicklog::init_buffer();
-    }
-
-    /// Initializes buffer for static serialization
-    fn init_buffer() {
-        unsafe {
-            BUFFER.set(Buffer::new()).ok();
-        }
-    }
-
-    /// Initializes channel for main logging queue
-    fn init_channel() {
+    pub fn init(&mut self) {
         static mut QUEUE: Queue<TimedLogRecord, MAX_LOGGER_CAPACITY> = Queue::new();
         let (sender, receiver): (Sender, Receiver) = unsafe { QUEUE.split() };
-        unsafe {
-            SENDER.set(sender).ok();
-            RECEIVER.set(receiver).ok();
-        }
+
+        self.sender.set(sender).ok();
+        self.receiver.set(receiver).ok();
+    }
+
+    /// Internal API to get a chunk from buffer
+    ///
+    /// <strong>DANGER</strong>
+    ///
+    /// In release, the [`TAIL`] wraps around back to the start of the buffer when
+    /// there isn't sufficient space left inside of [`BUFFER`]. If this happens,
+    /// the buffer might overwrite previous data with anything.
+    ///
+    /// In debug, the method panics when we reach the end of the buffer
+    #[doc(hidden)]
+    pub fn get_chunk_as_mut(&mut self, chunk_size: usize) -> &mut [u8] {
+        self.byte_buffer.get_chunk_as_mut(chunk_size)
     }
 }
 
@@ -363,30 +361,33 @@ impl Default for Quicklog {
             flusher: Box::new(FileFlusher::new("logs/quicklog.log")),
             clock: Box::new(QuantaClock::new()),
             formatter: Box::new(QuickLogFormatter::new()),
+            sender: OnceCell::new(),
+            receiver: OnceCell::new(),
+            byte_buffer: ByteBuffer::new(),
         }
     }
 }
 
 impl Log for Quicklog {
-    fn log(&self, record: LogRecord) -> SendResult {
-        match unsafe {
-            SENDER
+    fn log(&mut self, record: LogRecord) -> SendResult {
+        match
+            self.sender
                 .get_mut()
                 .expect("Sender is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
                 .enqueue((self.clock.get_instant(), record))
-        } {
+        {
             Ok(_) => Ok(()),
             Err(err) => Err(err),
         }
     }
 
     fn flush_one(&mut self) -> RecvResult {
-        match unsafe {
-            RECEIVER
+        match
+            self.receiver
                     .get_mut()
                     .expect("RECEIVER is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
                     .dequeue()
-        } {
+        {
             Some((time_logged, record)) => {
                 let log_line = self.formatter.custom_format(
                     self.clock

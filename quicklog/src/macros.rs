@@ -35,7 +35,7 @@ macro_rules! with_flush_into_file {
 #[macro_export]
 macro_rules! init {
     () => {
-        $crate::Quicklog::init();
+        $crate::logger().init();
     };
 }
 
@@ -88,9 +88,8 @@ macro_rules! is_level_enabled {
 #[macro_export]
 macro_rules! make_store {
     ($serializable:expr) => {
-        $serializable.encode($crate::serialize::get_chunk_as_mut(
-            $serializable.buffer_size_required(),
-        ))
+        $serializable
+            .encode($crate::logger().get_chunk_as_mut($serializable.buffer_size_required()))
     };
 }
 
