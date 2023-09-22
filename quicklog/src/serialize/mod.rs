@@ -2,25 +2,6 @@ use std::{fmt::Display, str::from_utf8};
 
 pub mod buffer;
 
-/// Internal API to get a chunk from buffer
-///
-/// <strong>DANGER</strong>
-///
-/// In release, the [`TAIL`] wraps around back to the start of the buffer when
-/// there isn't sufficient space left inside of [`BUFFER`]. If this happens,
-/// the buffer might overwrite previous data with anything.
-///
-/// In debug, the method panics when we reach the end of the buffer
-#[doc(hidden)]
-pub fn get_chunk_as_mut(chunk_size: usize) -> &'static mut [u8] {
-    unsafe {
-        buffer::BUFFER
-            .get_mut()
-            .expect("BUFFER not init, did you run init?")
-            .get_chunk_as_mut(chunk_size)
-    }
-}
-
 /// Allows specification of a custom way to serialize the Struct.
 /// Additionally, this stores the contents serialized onto a static buffer, which does
 /// not require allocation and could speed things up.

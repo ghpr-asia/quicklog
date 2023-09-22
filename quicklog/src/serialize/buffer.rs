@@ -1,24 +1,20 @@
 use crate::constants::MAX_SERIALIZE_BUFFER_CAPACITY;
-use once_cell::unsync::OnceCell;
 
-static mut BYTE_BUFFER: [u8; MAX_SERIALIZE_BUFFER_CAPACITY] = [0_u8; MAX_SERIALIZE_BUFFER_CAPACITY];
-
-pub static mut BUFFER: OnceCell<Buffer> = OnceCell::new();
-
-/// In release, buffer only has a write_idx and there's no overhead
-/// of using atomics
-pub struct Buffer {
+/// Bytebuffer to provide byte chunks for store
+pub struct ByteBuffer {
+    data: Vec<u8>,
     write_idx: usize,
 }
 
-impl Buffer {
-    pub fn new() -> Buffer {
-        Buffer { write_idx: 0 }
+impl ByteBuffer {
+    pub fn new() -> Self {
+        let mut data = Vec::new();
+        data.resize(MAX_SERIALIZE_BUFFER_CAPACITY, 0);
+        Self { data, write_idx: 0 }
     }
 
-    pub fn get_chunk_as_mut(&mut self, chunk_size: usize) -> &'static mut [u8] {
+    pub fn get_chunk_as_mut(&mut self, chunk_size: usize) -> &mut [u8] {
         let curr_idx = self.write_idx;
-
         if chunk_size > MAX_SERIALIZE_BUFFER_CAPACITY {
             panic!(
                 "BUFFER size insufficient to support chunk_size: {}, please increase MAX_CAPACITY",
@@ -26,19 +22,23 @@ impl Buffer {
             );
         }
 
-        // loop back around if insufficient size
+        // This condition guards against the case where the amount of data we want to write
+        // is greater than the MAX_SERIALIZE_BUFFER_CAPACITY. When this happens,
+        // it is possible that the initial log lines before the one that caused this overflow
+        // will be wrong. This is EXPECTED.
+        // When this happens, the user should modify the BUFFER_SIZE
         if curr_idx + chunk_size > MAX_SERIALIZE_BUFFER_CAPACITY {
             self.write_idx = chunk_size;
             // in release, overwrite existing items without panic
-            unsafe { &mut BYTE_BUFFER[0..chunk_size] }
+            &mut self.data[0..chunk_size]
         } else {
             self.write_idx += chunk_size;
-            unsafe { &mut BYTE_BUFFER[curr_idx..curr_idx + chunk_size] }
+            &mut self.data[curr_idx..curr_idx + chunk_size]
         }
     }
 }
 
-impl Default for Buffer {
+impl Default for ByteBuffer {
     fn default() -> Self {
         Self::new()
     }
