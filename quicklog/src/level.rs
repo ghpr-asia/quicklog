@@ -27,8 +27,6 @@
 //! [`Level`]: crate::level::Level
 //! [`LevelFilter`]: crate::level::LevelFilter
 
-use std::{fmt::Display, str::FromStr};
-
 #[repr(usize)]
 #[derive(Clone, Copy, Eq, PartialEq, PartialOrd)]
 pub enum Level {
@@ -44,11 +42,17 @@ pub enum Level {
     Error = 4,
 }
 
-impl Display for Level {
+impl std::fmt::Display for Level {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: Static comparison between enum variants and number of level strings present
         const LEVEL_STRINGS: [&str; 5] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
         write!(f, "{}", LEVEL_STRINGS[*self as usize])
+    }
+}
+
+impl std::fmt::Debug for Level {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
     }
 }
 
@@ -77,7 +81,7 @@ pub enum LevelFilter {
     Off = 6,
 }
 
-impl Display for LevelFilter {
+impl std::fmt::Display for LevelFilter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: Static comparison between enum variants and number of level filter strings present
         const LEVEL_FILTER_STRINGS: [&str; 6] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "OFF"];
@@ -85,10 +89,16 @@ impl Display for LevelFilter {
     }
 }
 
+impl std::fmt::Debug for LevelFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogLevelParseError();
 
-impl FromStr for LevelFilter {
+impl std::str::FromStr for LevelFilter {
     type Err = LogLevelParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
