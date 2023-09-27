@@ -12,8 +12,7 @@ macro_rules! with_flush {
 #[macro_export]
 macro_rules! with_flush_into_file {
     ($file_path:expr) => {{
-        use $crate::quicklog_flush::FileFlusher;
-        let flusher = FileFlusher::new($file_path);
+        let flusher = $crate::quicklog_flush::file_flusher::FileFlusher::new($file_path);
         $crate::logger().use_flush($crate::make_container!(flusher));
     }};
 }
