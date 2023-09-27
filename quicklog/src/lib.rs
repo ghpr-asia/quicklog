@@ -212,6 +212,8 @@ use serialize::buffer::ByteBuffer;
 use std::{cell::OnceCell, fmt::Display};
 
 pub use ::lazy_format;
+/// `paste` macro emitted from `try_log` implementation
+pub use ::paste;
 pub use std::{file, line, module_path};
 
 use chrono::{DateTime, Utc};

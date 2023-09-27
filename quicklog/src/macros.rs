@@ -126,7 +126,7 @@ macro_rules! try_log {
   // === base case
   // perform the logging by owning arguments
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($([$($field:tt)*])*)) => {
-    paste::paste! {{
+    $crate::paste::paste! {{
       if $crate::is_level_enabled!($lvl) {
         use $crate::{Log, make_container};
 
