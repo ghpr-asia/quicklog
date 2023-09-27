@@ -4,5 +4,5 @@ version = "0.1.1"
 edition = "2021"
 
 [dependencies]
-chrono = "0.4.24"
-quanta = "0.10.1"
+chrono = { version = "0.4.26", default-features = false, features = ["clock"] }
+quanta = "0.11.1"
