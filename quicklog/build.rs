@@ -41,7 +41,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=QUICKLOG_MAX_LOGGER_CAPACITY");
     let max_logger_capacity = match parse_value_from_config_with_default(
         "QUICKLOG_MAX_LOGGER_CAPACITY",
-        Some(1_000_000_usize),
+        Some(1_048_576_usize), // 2^20 = 1048576
     ) {
         Ok(val) => val,
         Err(err) => {
