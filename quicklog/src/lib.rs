@@ -213,6 +213,9 @@ use std::fmt::Display;
 use quicklog_clock::{quanta::QuantaClock, Clock};
 use quicklog_flush::{file_flusher::FileFlusher, Flush};
 
+/// re-export of the lazy_format crate, for use in macros
+pub use lazy_format;
+
 /// contains logging levels and filters
 pub mod level;
 /// contains macros
