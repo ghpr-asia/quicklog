@@ -215,6 +215,7 @@ use quicklog_flush::{file_flusher::FileFlusher, Flush};
 
 /// re-export of crates, for use in macros
 pub use lazy_format;
+pub use paste;
 pub use quicklog_flush;
 
 /// contains logging levels and filters
