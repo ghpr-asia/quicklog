@@ -176,6 +176,8 @@ macro_rules! try_log {
   // 5. `?` prefix - ?$next: eagerly format object that implements Debug
   // 6. `^` prefix - #$next: implemenets serialize trait, simply clone the Store
 
+  // cases 1-2
+
   // case 1a: match `literal = &expr` argument, where argument is a reference
   // example: info!("some string field {}", "string field here" = &some_variable)
   // we need to own the argument before we can pass it into the lazy_format closure
@@ -244,31 +246,7 @@ macro_rules! try_log {
     $crate::try_log!($lvl, $static_str @@ {{ $($args),* , $crate::lazy_format::lazy_format!("{}={}", stringify!($($key).+), $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
   };
 
-  // case 3: no prefix - own and pass to lazy_format
-  // example: info!("hello world {}", some_display_struct);
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $next:expr, $($rest:tt)*) => {
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , $next }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
-  };
-
-  // case 4: `%` prefix - eagerly evaluate display string with `format!()`
-  // example: info!("hello world {}", %display_struct);
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) %$next:expr, $($rest:tt)*) => {
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}", $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
-  };
-
-  // case 5: `?` prefix - eager evaluate debug string with `format!()`
-  // example: info!("hello world {}", ?debug_struct);
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) ?$next:expr, $($rest:tt)*) => {
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{:?}", $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
-  };
-
-  // case 6: `^` prefix - struct implements Serialize trait, encode into Store from buffer
-  // example: info!("hello world {}", ^debug_struct);
-  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) ^$next:expr, $($rest:tt)*) => {
-    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , $crate::make_store!($next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
-  };
-
-  // last recursive case - no more $($rest)* to recurse over
+  // recursive cases 1-2
 
   // case 1a - ref &$next
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $key:literal = &$next:expr) => {{
@@ -321,6 +299,34 @@ macro_rules! try_log {
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $($key:ident).+ = $next:expr) => {
     $crate::try_log!($lvl, $static_str @@ {{ $($args),* , $crate::lazy_format::lazy_format!("{}={}", stringify!($($key).+), $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]))
   };
+
+  // cases 3-6: no prefix
+
+  // case 3: no prefix - own and pass to lazy_format
+  // example: info!("hello world {}", some_display_struct);
+  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $next:expr, $($rest:tt)*) => {
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , $next }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
+  };
+
+  // case 4: `%` prefix - eagerly evaluate display string with `format!()`
+  // example: info!("hello world {}", %display_struct);
+  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) %$next:expr, $($rest:tt)*) => {
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{}", $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
+  };
+
+  // case 5: `?` prefix - eager evaluate debug string with `format!()`
+  // example: info!("hello world {}", ?debug_struct);
+  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) ?$next:expr, $($rest:tt)*) => {
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , format!("{:?}", $next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
+  };
+
+  // case 6: `^` prefix - struct implements Serialize trait, encode into Store from buffer
+  // example: info!("hello world {}", ^debug_struct);
+  ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) ^$next:expr, $($rest:tt)*) => {
+    $crate::try_log!($lvl, $static_str @@ {{ $($args),* , $crate::make_store!($next) }} @ ($($prefix)* x) ($($past)* [$($prefix)*]) $($rest)*)
+  };
+
+  // recursive cases 3-6: no prefix
 
   // case 3
   ($lvl:expr, $static_str:literal @@ {{ $(,)* $($args:expr),* }} @ ($($prefix:tt)*) ($($past:tt)*) $next:expr) => {
