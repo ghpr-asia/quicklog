@@ -44,9 +44,14 @@ pub enum Level {
 
 impl std::fmt::Display for Level {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO: Static comparison between enum variants and number of level strings present
-        const LEVEL_STRINGS: [&str; 6] = ["TRC", "DBG", "INF", "WRN", "ERR", "OFF"];
-        write!(f, "{}", LEVEL_STRINGS[*self as usize])
+        let level = match self {
+            Self::Trace => "TRC",
+            Self::Debug => "DBG",
+            Self::Info => "INF",
+            Self::Warn => "WRN",
+            Self::Error => "ERR",
+        };
+        write!(f, "{}", level)
     }
 }
 
@@ -83,9 +88,16 @@ pub enum LevelFilter {
 
 impl std::fmt::Display for LevelFilter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO: Static comparison between enum variants and number of level filter strings present
-        const LEVEL_FILTER_STRINGS: [&str; 6] = ["TRC", "DBG", "INF", "WRN", "ERR", "OFF"];
-        write!(f, "{}", LEVEL_FILTER_STRINGS[*self as usize])
+        let level_filter = match self {
+            Self::Trace => "TRC",
+            Self::Debug => "DBG",
+            Self::Info => "INF",
+            Self::Warn => "WRN",
+            Self::Error => "ERR",
+            Self::Event => "EVT",
+            Self::Off => "OFF",
+        };
+        write!(f, "{}", level_filter)
     }
 }
 
