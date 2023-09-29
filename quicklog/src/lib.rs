@@ -807,6 +807,10 @@ mod tests {
             info!("single eager display: {}", %s2),
             format!("single eager display: {}", s2)
         );
+        assert_message_equal!(
+            info!("single eager display with prefix: {}", a = %s2),
+            format!("single eager display with prefix: a={}", s2)
+        );
     }
 
     #[test]
