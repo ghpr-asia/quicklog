@@ -9,7 +9,8 @@ use crate::Flush;
 pub struct FileFlusher(&'static str);
 
 impl FileFlusher {
-    /// Flushes into file with specified path
+    /// Flushes into file with specified path. Ensure that the directory exists for the destination log file,
+    /// otherwise, an error would be thrown
     pub fn new(path: &'static str) -> FileFlusher {
         FileFlusher(path)
     }
