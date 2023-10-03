@@ -106,7 +106,7 @@ macro_rules! try_log {
         module_path:$crate::module_path!(),
         file: $crate::file!(),
         line: $crate::line!(),
-        log_line: make_container!($crate::lazy_format::lazy_format!("{}", $static_str)),
+        log_line: make_container!($static_str),
       };
 
       $crate::logger().log(log_record)
