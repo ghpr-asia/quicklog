@@ -33,7 +33,7 @@
 //!
 //! ```
 //! # use std::thread;
-//! # use quicklog::{info, init, flush};
+//! # use quicklog::{init, flush, info};
 //! fn main() {
 //!     init!();
 //!
@@ -53,16 +53,13 @@
 //!
 //! #### Shorthand Macros
 //!
-//! Quicklog allows a number of macros with 5 different levels of verbosity. These
-//! wrap around [`log!`] with the corresponding levels.
+//! Quicklog allows a number of macros with 5 different levels of verbosity. They are:
 //!
 //! * [`trace!`]
 //! * [`debug!`]
 //! * [`info!`]
 //! * [`warn!`]
 //! * [`error!`]
-//!
-//! Internally, these shorthands call [`try_log!`] with their respective levels.
 //!
 //! ## Setup Macros
 //!
@@ -85,6 +82,7 @@
 //! need to copy.
 //!
 //! ```ignore
+//! # use quicklog::{init, info, serialize::{Serialize, Store}};
 //! struct SomeStruct {
 //!     num: i64
 //! }
@@ -95,8 +93,9 @@
 //! }
 //!
 //! fn main() {
+//!     init!();
 //!     let s = SomeStruct { num: 1_000_000 };
-//!     info!("some struct: {}", ^s);
+//!     info!(^s, "some struct:");
 //! }
 //! ```
 //!
@@ -112,13 +111,10 @@
 //! # let impl_debug = "";
 //! # let impl_display = "";
 //! # init!();
-//! info!("eager display {}; eager debug {}", %impl_display, ?impl_debug);
+//! info!(%impl_display, ?impl_debug);
+//!
 //! // logically expands into:
-//! // info!(
-//! //      "eager display {}; eager debug {}",
-//! //      format!("{}",   impl_display),
-//! //      format!("{:?}", impl_debug)
-//! // );
+//! // info!(format!("impl_display={}", impl_display), format!("impl_debug={:?}", impl_debug));
 //! # }
 //! ```
 //!
@@ -134,8 +130,8 @@
 //! # fn main() {
 //! # init!();
 //! # let value = 10;
-//! info!("hello world {} {} {}", question.tricky = true, question.answer = ?value, question.val = &value);
-//! // output: "hello world question.tricky=true question.answer=10 question.val=10"
+//! info!(question.answer = ?value, question.tricky=true, question.val= value, "some questions:");
+//! // output: "some questions: question.tricky=true question.val=10 question.answer=10"
 //! # }
 //! ```
 //!
@@ -212,8 +208,6 @@ use serialize::buffer::ByteBuffer;
 use std::{cell::OnceCell, fmt::Display};
 
 pub use ::lazy_format;
-/// `paste` macro emitted from `try_log` implementation
-pub use ::paste;
 pub use std::{file, line, module_path};
 
 use chrono::{DateTime, Utc};
@@ -230,6 +224,8 @@ pub mod serialize;
 include!("constants.rs");
 /// `constants.rs` is generated from `build.rs`, should not be modified manually
 pub mod constants;
+
+pub use quicklog_macros::{debug, error, info, trace, warn};
 
 /// Internal API
 ///

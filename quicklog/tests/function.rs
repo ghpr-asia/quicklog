@@ -36,13 +36,13 @@ fn main() {
 
     assert_message_equal!(
         info!(
-            "A: price: {} symbol: {} exch_id: {}",
-            a.get_price(),
-            ?a.get_symbol(),
-            %a.get_exch_id()
+            price = a.get_price(),
+            symbol = ?a.get_symbol(),
+            exch_id = a.get_exch_id(),
+            "A:"
         ),
         format!(
-            "A: price: {} symbol: \"{}\" exch_id: {:?}",
+            "A: price={} symbol=\"{}\" exch_id={:?}",
             a.get_price(),
             a.get_symbol(),
             a.get_exch_id()

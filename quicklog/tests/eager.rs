@@ -16,18 +16,18 @@ fn main() {
     let some_str = "hello world";
 
     assert_message_equal!(
-        info!("display {}; eager debug {}; eager display {}, eager display inner field {}", some_str, ?s2, %s1, %s1.some_str),
+        info!(eager.debug = ?s2, eager.display = %s1, eager.display.inner.field = %s1.some_str, "display {};", some_str),
         format!(
-            "display {}; eager debug {:?}; eager display {}, eager display inner field {}",
+            "display {}; eager.debug={:?} eager.display={} eager.display.inner.field={}",
             some_str, s2, s1, s1.some_str
         )
     );
     assert_message_equal!(
-        info!("single eager display: {}", %s2),
-        format!("single eager display: {}", s2)
+        info!(%s2, "single eager display with prefix:"),
+        format!("single eager display with prefix: s2={}", s2)
     );
     assert_message_equal!(
-        info!("single eager display with prefix: {}", a = %s2),
-        format!("single eager display with prefix: a={}", s2)
+        info!(a = %s2, "single eager display with prefix and name:"),
+        format!("single eager display with prefix and name: a={}", s2)
     );
 }
