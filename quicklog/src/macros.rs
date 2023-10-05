@@ -90,6 +90,40 @@ macro_rules! make_store {
   }};
 }
 
+/// Statically configured option for logging the module path after the level.
+/// ie. [INFO][quicklog::macros] Logged!
+#[doc(hidden)]
+pub enum ModulePath {
+    Enabled,
+    Disabled,
+}
+
+// Checks the feature flags specified by the user of the library, and sets the
+// const [`MODULE_PATH`] option accordingly. Defaults to `LevelFilter::Disabled` if the
+// user does not specify any feature flag
+cfg_if::cfg_if! {
+  if #[cfg(feature = "module_path")] {
+    pub const MODULE_PATH: ModulePath = ModulePath::Enabled;
+  } else {
+    pub const MODULE_PATH: ModulePath = ModulePath::Disabled;
+  }
+}
+
+/// Checks if the module path should be logged by checking
+/// static [`MODULE_PATH`] which is evaluated at compile time
+///
+/// [`MODULE_PATH`]: crate::macros::MODULE_PATH
+#[doc(hidden)]
+#[macro_export]
+macro_rules! is_module_path_enabled {
+    () => {
+        matches!(
+            $crate::macros::MODULE_PATH,
+            $crate::macros::ModulePath::Enabled
+        )
+    };
+}
+
 /// Runs log and returns a Result, matches either a literal / or a literal with some arguments
 /// which are matched recursively.
 #[macro_export]
@@ -99,15 +133,13 @@ macro_rules! try_log {
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, make_container};
 
-      $crate::cfg_if::cfg_if! {
-        if #[cfg(feature = "module_path")] {
-          let log_line = $crate::lazy_format::lazy_format!("[{}][{}]\t{}", $lvl, module_path!(), $static_str);
-        } else {
-          let log_line = $crate::lazy_format::lazy_format!("[{}]\t{}", $lvl, $static_str);
-        }
+      if $crate::is_module_path_enabled!() {
+        let log_line = $crate::lazy_format::lazy_format!("[{}][{}]\t{}", $lvl, module_path!(), $static_str);
+        $crate::logger().log(make_container!(log_line))
+      } else {
+        let log_line = $crate::lazy_format::lazy_format!("[{}]\t{}", $lvl, $static_str);
+        $crate::logger().log(make_container!(log_line))
       }
-
-      $crate::logger().log(make_container!(log_line))
     } else {
       Ok(())
     }
@@ -363,6 +395,17 @@ macro_rules! try_flush {
 macro_rules! flush {
     () => {
         $crate::try_flush!().unwrap_or(());
+    };
+}
+
+/// Allows flushing onto an implementor of [`Flush`], which can be modified with
+/// [`with_flush!`] macro and continues trying to flush until no more lines need flushing.
+///
+/// [`Flush`]: `quicklog_flush::Flush`
+#[macro_export]
+macro_rules! flush_all {
+    () => {
+        while let Ok(()) = $crate::try_flush!() {}
     };
 }
 
