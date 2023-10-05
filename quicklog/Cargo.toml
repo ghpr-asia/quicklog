@@ -16,6 +16,7 @@ name = "quicklog"
 path = "src/lib.rs"
 
 [features]
+module_path = []
 max_level_off = []
 max_level_error = []
 max_level_warn = []

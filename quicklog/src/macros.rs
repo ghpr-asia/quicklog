@@ -100,7 +100,13 @@ macro_rules! try_log {
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, make_container};
 
-      let log_line = $crate::lazy_format::lazy_format!("[{}]\t{}", $lvl, $static_str);
+      cfg_if::cfg_if! {
+        if #[cfg(feature = "module_path")] {
+          let log_line = $crate::lazy_format::lazy_format!("[{}][{}]\t{}", $lvl, module_path!(), $static_str);
+        } else {
+          let log_line = $crate::lazy_format::lazy_format!("[{}]\t{}", $lvl, $static_str);
+        }
+      }
 
       $crate::logger().log(make_container!(log_line))
     } else {
@@ -125,9 +131,17 @@ macro_rules! try_log {
         #[allow(unused_parens)]
         let ($([<$($field)*>]),*) = ($(($args).to_owned()),*);
 
-        let log_line = $crate::lazy_format::make_lazy_format!(|f| {
-          write!(f, concat!("[{}]\t", $static_str), $lvl, $([<$($field)*>]),*)
-        });
+        cfg_if::cfg_if! {
+          if #[cfg(feature = "module_path")] {
+            let log_line = $crate::lazy_format::make_lazy_format!(|f| {
+              write!(f, concat!("[{}][{}]\t", $static_str), $lvl, module_path!(), $([<$($field)*>]),*)
+            });
+          } else {
+            let log_line = $crate::lazy_format::make_lazy_format!(|f| {
+              write!(f, concat!("[{}]\t", $static_str), $lvl, $([<$($field)*>]),*)
+            });
+          }
+        }
 
         $crate::logger().log(make_container!(log_line))
       } else {
