@@ -80,8 +80,7 @@ macro_rules! is_level_enabled {
 #[macro_export]
 macro_rules! make_store {
   ($serializable:expr) => {{
-    use cfg_if::cfg_if;
-    cfg_if! {
+    $crate::cfg_if::cfg_if! {
       if #[cfg(debug_assertions)] {
             std::sync::Arc::new($serializable.encode($crate::serialize::get_chunk_as_mut($serializable.buffer_size_required())))
       } else {
@@ -100,7 +99,7 @@ macro_rules! try_log {
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, make_container};
 
-      cfg_if::cfg_if! {
+      $crate::cfg_if::cfg_if! {
         if #[cfg(feature = "module_path")] {
           let log_line = $crate::lazy_format::lazy_format!("[{}][{}]\t{}", $lvl, module_path!(), $static_str);
         } else {
@@ -131,7 +130,7 @@ macro_rules! try_log {
         #[allow(unused_parens)]
         let ($([<$($field)*>]),*) = ($(($args).to_owned()),*);
 
-        cfg_if::cfg_if! {
+        $crate::cfg_if::cfg_if! {
           if #[cfg(feature = "module_path")] {
             let log_line = $crate::lazy_format::make_lazy_format!(|f| {
               write!(f, concat!("[{}][{}]\t", $static_str), $lvl, module_path!(), $([<$($field)*>]),*)

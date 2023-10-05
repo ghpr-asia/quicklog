@@ -1,4 +1,4 @@
-use quicklog::{debug, error, flush, info, trace, warn, with_flush};
+use quicklog::{debug, error, flush, info, init, trace, warn, with_flush};
 use quicklog_flush::stdout_flusher::StdoutFlusher;
 
 #[derive(Clone)]
@@ -13,6 +13,7 @@ impl std::fmt::Display for S {
 }
 
 fn main() {
+    init!();
     with_flush!(StdoutFlusher);
 
     trace!("hello world! {} {} {}", 2, 3, 4);
