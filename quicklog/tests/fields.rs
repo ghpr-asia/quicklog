@@ -33,30 +33,29 @@ fn main() {
     );
 
     assert_message_equal!(
-        info!("pass by ref {}", some_struct.field1.innerfield.inner = &s1),
+        info!(some_struct.field1.innerfield.inner = &s1, "pass by ref"),
         format!("pass by ref some_struct.field1.innerfield.inner={}", &s1)
     );
     assert_message_equal!(
-        info!("pass by move {}", some.inner.field = s3),
+        info!(some.inner.field = s3, "pass by move"),
         format!("pass by move some.inner.field={}", s3_clone)
     );
     assert_message_equal!(
             info!(
-                "non-nested field: {}, nested field: {}, pure lit: {}",
+                ?s1,
                 borrow_s2_field = %s2,
                 some_inner_field.inner.field.inner.arg = "hello world",
-                "pure lit arg" = "another lit arg"
+                "no name field, non-nested field, nested field:"
             ),
-            format!("non-nested field: borrow_s2_field={}, nested field: some_inner_field.inner.field.inner.arg=hello world, pure lit: pure lit arg=another lit arg", &s2)
+            format!("no name field, non-nested field, nested field: s1={:?} borrow_s2_field={} some_inner_field.inner.field.inner.arg=hello world", s1, &s2)
         );
     assert_message_equal!(
-            info!(
-                "pure lit: {}, reuse debug: {}, nested field: {}, able to reuse after pass by ref: {}",
-                "pure lit arg" = "another lit arg",
-                "able to reuse s1" = ?s1,
-                some_inner_field.some.field.included = "hello world",
-                able.to.reuse.s2.borrow = &s2
-            ),
-            format!("pure lit: pure lit arg=another lit arg, reuse debug: able to reuse s1={:?}, nested field: some_inner_field.some.field.included=hello world, able to reuse after pass by ref: able.to.reuse.s2.borrow={}", s1, &s2)
-        );
+        info!(
+            reuse.debug = ?s1,
+            some_inner_field.some.field.included = "hello world",
+            able.to.reuse.s2.borrow = &s2,
+            "reuse debug, nested field, able to reuse after pass by ref:"
+        ),
+        format!("reuse debug, nested field, able to reuse after pass by ref: reuse.debug={:?} some_inner_field.some.field.included=hello world able.to.reuse.s2.borrow={}", s1, &s2)
+    );
 }

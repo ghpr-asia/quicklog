@@ -10,7 +10,4 @@ fn main() {
     info!("hello world");
     warn!("hello world");
     error!("hello world");
-
-    // Allow single trailing comma
-    info!("hello world",);
 }
