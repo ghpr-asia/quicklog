@@ -92,36 +92,8 @@ macro_rules! make_store {
 
 /// Statically configured option for logging the module path after the level.
 /// ie. [INFO][quicklog::macros] Logged!
-#[doc(hidden)]
-pub enum ModulePath {
-    Enabled,
-    Disabled,
-}
-
-// Checks the feature flags specified by the user of the library, and sets the
-// const [`MODULE_PATH`] option accordingly. Defaults to `LevelFilter::Disabled` if the
-// user does not specify any feature flag
-cfg_if::cfg_if! {
-  if #[cfg(feature = "module_path")] {
-    pub const MODULE_PATH: ModulePath = ModulePath::Enabled;
-  } else {
-    pub const MODULE_PATH: ModulePath = ModulePath::Disabled;
-  }
-}
-
-/// Checks if the module path should be logged by checking
-/// static [`MODULE_PATH`] which is evaluated at compile time
-///
-/// [`MODULE_PATH`]: crate::macros::MODULE_PATH
-#[doc(hidden)]
-#[macro_export]
-macro_rules! is_module_path_enabled {
-    () => {
-        matches!(
-            $crate::macros::MODULE_PATH,
-            $crate::macros::ModulePath::Enabled
-        )
-    };
+pub const fn is_module_path_enabled() -> bool {
+    cfg!(feature = "module_path")
 }
 
 /// Runs log and returns a Result, matches either a literal / or a literal with some arguments
@@ -133,7 +105,7 @@ macro_rules! try_log {
     if $crate::is_level_enabled!($lvl) {
       use $crate::{Log, make_container};
 
-      if $crate::is_module_path_enabled!() {
+      if $crate::macros::is_module_path_enabled() {
         let log_line = $crate::lazy_format::lazy_format!("[{}][{}]\t{}", $lvl, module_path!(), $static_str);
         $crate::logger().log(make_container!(log_line))
       } else {
@@ -162,19 +134,17 @@ macro_rules! try_log {
         #[allow(unused_parens)]
         let ($([<$($field)*>]),*) = ($(($args).to_owned()),*);
 
-        $crate::cfg_if::cfg_if! {
-          if #[cfg(feature = "module_path")] {
-            let log_line = $crate::lazy_format::make_lazy_format!(|f| {
-              write!(f, concat!("[{}][{}]\t", $static_str), $lvl, module_path!(), $([<$($field)*>]),*)
-            });
-          } else {
-            let log_line = $crate::lazy_format::make_lazy_format!(|f| {
-              write!(f, concat!("[{}]\t", $static_str), $lvl, $([<$($field)*>]),*)
-            });
-          }
+        if $crate::macros::is_module_path_enabled() {
+          let log_line = $crate::lazy_format::make_lazy_format!(|f| {
+            write!(f, concat!("[{}][{}]\t", $static_str), $lvl, module_path!(), $([<$($field)*>]),*)
+          });
+          $crate::logger().log(make_container!(log_line))
+        } else {
+          let log_line = $crate::lazy_format::make_lazy_format!(|f| {
+            write!(f, concat!("[{}]\t", $static_str), $lvl, $([<$($field)*>]),*)
+          });
+          $crate::logger().log(make_container!(log_line))
         }
-
-        $crate::logger().log(make_container!(log_line))
       } else {
         Ok(())
       }
