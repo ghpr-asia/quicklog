@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::str::from_utf8;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
@@ -11,6 +12,7 @@ use quicklog::with_flush;
 use quicklog_clock::quanta::QuantaClock;
 use quicklog_clock::Clock;
 use quicklog_flush::noop_flusher::NoopFlusher;
+use recycle_box::{coerce_box, RecycleBox};
 
 #[derive(Debug, Clone, Copy)]
 struct BigStruct {
@@ -117,6 +119,54 @@ fn bench_box_lazy_format(b: &mut Bencher) {
                 arg
             )
         })));
+    })
+}
+
+fn bench_recycle_box_lazy_format(b: &mut Bencher) {
+    let bs = black_box(BigStruct {
+        vec: [1; 100],
+        some: "the quick brown fox jumps over the lazy dog",
+    });
+    let mut nested = black_box(Nested { vec: Vec::new() });
+    for _ in 0..10 {
+        nested.vec.push(bs)
+    }
+
+    let mut recycle_box_arena = Vec::new();
+
+    for _ in 0..10 {
+        let arg = nested.to_owned();
+
+        let lf = RecycleBox::new(make_lazy_format!(|f| {
+            write!(
+                f,
+                concat!("[{}]\t", "{:?}"),
+                quicklog::level::Level::Info,
+                arg
+            )
+        }));
+
+        let lf_display: RecycleBox<dyn Display> = coerce_box!(lf);
+
+        recycle_box_arena.push(lf_display);
+    }
+
+    b.iter(|| {
+        let arg = nested.to_owned();
+        let box_from_arena = recycle_box_arena.pop().unwrap();
+        let return_box_to_arena: RecycleBox<dyn Display> = coerce_box!(RecycleBox::recycle(
+            box_from_arena,
+            make_lazy_format!(|f| {
+                write!(
+                    f,
+                    concat!("[{}]\t", "{:?}"),
+                    quicklog::level::Level::Info,
+                    arg
+                )
+            })
+        ));
+        // This operation should not be counted as it happens elsewhere
+        recycle_box_arena.push(black_box(return_box_to_arena));
     })
 }
 
@@ -228,6 +278,10 @@ fn bench_loggers(c: &mut Criterion) {
     group.bench_function("bench log BigStruct", bench_logger_and_flush);
     group.bench_function("bench log BigStruct ref", bench_logger_pass_by_ref);
     group.bench_function("bench log no args", bench_logger_no_args);
+    group.bench_function(
+        "bench recycle box lazy format",
+        bench_recycle_box_lazy_format,
+    );
     group.finish();
 }
 
