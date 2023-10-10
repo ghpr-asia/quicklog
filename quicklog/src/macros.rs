@@ -87,10 +87,11 @@ macro_rules! is_level_enabled {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! make_store {
-    ($serializable:expr) => {
+    ($serializable:expr) => {{
+        use $crate::serialize::Serialize;
         $serializable
             .encode($crate::logger().get_chunk_as_mut($serializable.buffer_size_required()))
-    };
+    }};
 }
 
 /// Runs log and returns a Result, matches either a literal / or a literal with some arguments
