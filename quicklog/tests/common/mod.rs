@@ -99,6 +99,7 @@ impl A {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct SerializeStruct {
     pub(crate) symbol: String,
 }
@@ -153,14 +154,24 @@ impl Serialize for BigStruct {
     }
 }
 
+pub(crate) struct SimpleStruct {
+    some_str: &'static str,
+}
+
+impl std::fmt::Display for SimpleStruct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.some_str)
+    }
+}
+
 #[macro_export]
 macro_rules! setup {
     () => {
         quicklog::init!();
         static mut VEC: Vec<String> = Vec::new();
-        let vec_flusher = unsafe { crate::common::VecFlusher::new(&mut VEC) };
+        let vec_flusher = unsafe { common::VecFlusher::new(&mut VEC) };
         quicklog::logger().use_flush(Box::new(vec_flusher));
-        quicklog::logger().use_formatter(Box::new(crate::common::TestFormatter::new()))
+        quicklog::logger().use_formatter(Box::new(common::TestFormatter::new()))
     };
 }
 
@@ -170,7 +181,7 @@ macro_rules! helper_assert {
     (@ $f:expr, $format_string:expr, $check_f:expr) => {
         $f;
         quicklog::flush!();
-        let output = unsafe { crate::common::from_log_lines(&VEC, $check_f) };
+        let output = unsafe { common::from_log_lines(&VEC, $check_f) };
         assert_eq!(output, vec![$format_string]);
         unsafe {
             let _ = &VEC.clear();
@@ -180,10 +191,10 @@ macro_rules! helper_assert {
 
 #[macro_export]
 macro_rules! assert_message_equal {
-    ($f:expr, $format_string:expr) => { helper_assert!(@ $f, $format_string, crate::common::message_from_log_line) };
+    ($f:expr, $format_string:expr) => { helper_assert!(@ $f, $format_string, common::message_from_log_line) };
 }
 
 #[macro_export]
 macro_rules! assert_message_with_level_equal {
-    ($f:expr, $format_string:expr) => { helper_assert!(@ $f, $format_string, crate::common::message_and_level_from_log_line) };
+    ($f:expr, $format_string:expr) => { helper_assert!(@ $f, $format_string, common::message_and_level_from_log_line) };
 }

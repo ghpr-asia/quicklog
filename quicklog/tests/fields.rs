@@ -1,6 +1,6 @@
 use quicklog::info;
 
-use crate::common::{NestedSomething, Something};
+use common::{NestedSomething, Something};
 
 mod common;
 
@@ -48,7 +48,7 @@ fn main() {
                 "no name field, non-nested field, nested field:"
             ),
             format!("no name field, non-nested field, nested field: s1={:?} borrow_s2_field={} some_inner_field.inner.field.inner.arg=hello world", s1, &s2)
-        );
+    );
     assert_message_equal!(
         info!(
             reuse.debug = ?s1,

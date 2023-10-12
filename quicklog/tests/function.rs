@@ -1,6 +1,6 @@
 use quicklog::info;
 
-use crate::common::{Something, A};
+use common::{Something, A};
 
 mod common;
 
