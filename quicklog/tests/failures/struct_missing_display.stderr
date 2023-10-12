@@ -1,0 +1,49 @@
+error[E0277]: the trait bound `Something: Serialize` is not satisfied
+  --> tests/failures/struct_missing_display.rs:12:5
+   |
+12 |     info!(^s1, "struct does not implement Serialize");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Serialize` is not implemented for `Something`
+   |
+   = help: the following other types implement trait `Serialize`:
+             SerializeStruct
+             BigStruct
+note: required by a bound in `serialize_check`
+  --> tests/failures/struct_missing_display.rs:12:5
+   |
+12 |     info!(^s1, "struct does not implement Serialize");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `serialize_check`
+   = note: this error originates in the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: no method named `encode` found for struct `Something` in the current scope
+  --> tests/failures/struct_missing_display.rs:12:5
+   |
+12 |     info!(^s1, "struct does not implement Serialize");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     method not found in `Something`
+   |
+  ::: tests/failures/../common/mod.rs
+   |
+   | pub(crate) struct Something {
+   | --------------------------- method `encode` not found for this struct
+   |
+   = help: items from traits can only be used if the trait is implemented and in scope
+   = note: the following trait defines an item `encode`, perhaps you need to implement it:
+           candidate #1: `Serialize`
+   = note: this error originates in the macro `quicklog::make_store` which comes from the expansion of the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: no method named `buffer_size_required` found for struct `Something` in the current scope
+  --> tests/failures/struct_missing_display.rs:12:5
+   |
+12 |     info!(^s1, "struct does not implement Serialize");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Something`
+   |
+  ::: tests/failures/../common/mod.rs
+   |
+   | pub(crate) struct Something {
+   | --------------------------- method `buffer_size_required` not found for this struct
+   |
+   = help: items from traits can only be used if the trait is implemented and in scope
+   = note: the following trait defines an item `buffer_size_required`, perhaps you need to implement it:
+           candidate #1: `Serialize`
+   = note: this error originates in the macro `quicklog::make_store` which comes from the expansion of the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)

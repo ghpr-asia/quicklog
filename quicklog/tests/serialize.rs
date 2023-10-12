@@ -1,6 +1,6 @@
 use quicklog::info;
 
-use crate::common::{BigStruct, SerializeStruct};
+use common::{BigStruct, SerializeStruct};
 
 mod common;
 

@@ -1,6 +1,6 @@
 use quicklog::info;
 
-use crate::common::Something;
+use common::Something;
 
 mod common;
 
