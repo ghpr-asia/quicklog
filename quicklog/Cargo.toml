@@ -15,13 +15,11 @@ path = "tests/ui.rs"
 
 [dependencies]
 lazy_format = "2.0.0"
-regex = "1.7.1"
 quicklog-clock = { path = "../quicklog-clock", version = "0.1.2", registry = "ghp-cargo-local" }
 quicklog-flush = { path = "../quicklog-flush", version = "0.1.2", registry = "ghp-cargo-local" }
 quicklog-macros = { path = "../quicklog-macros", version = "0.1.0" }
 quanta = "0.11.1"
 once_cell = "1.18.0"
-cfg-if = "1.0.0"
 heapless = "0.7.16"
 chrono = { version = "0.4.26", default-features = false, features = ["clock"] }
 
