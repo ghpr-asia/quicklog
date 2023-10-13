@@ -61,6 +61,8 @@ fn main() {
 }
 ```
 
+More usage examples are available [here](quicklog/examples/macros.rs).
+
 ## Benchmark
 
 ### Logging a vector of 10 structs
