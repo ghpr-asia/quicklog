@@ -17,7 +17,7 @@ impl std::fmt::Display for S {
 }
 
 impl Serialize for S {
-    fn encode(&self, write_buf: &'static mut [u8]) -> Store {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
         encode_i32(self.i, write_buf)
     }
 

@@ -105,7 +105,7 @@ pub(crate) struct SerializeStruct {
 }
 
 impl Serialize for SerializeStruct {
-    fn encode(&self, write_buf: &'static mut [u8]) -> Store {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
         fn decode(read_buf: &[u8]) -> String {
             let x = std::str::from_utf8(read_buf).unwrap();
             x.to_string()
@@ -126,7 +126,7 @@ pub(crate) struct BigStruct {
 }
 
 impl Serialize for BigStruct {
-    fn encode(&self, write_buf: &'static mut [u8]) -> Store {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
         fn decode(buf: &[u8]) -> String {
             let (mut _head, mut tail) = buf.split_at(0);
             let mut vec = vec![];

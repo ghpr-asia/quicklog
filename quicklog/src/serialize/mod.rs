@@ -3,10 +3,10 @@ use std::{fmt::Display, str::from_utf8};
 pub mod buffer;
 
 /// Allows specification of a custom way to serialize the Struct.
-/// Additionally, this stores the contents serialized onto a static buffer, which does
+/// Additionally, this stores the contents serialized into a buffer, which does
 /// not require allocation and could speed things up.
 pub trait Serialize {
-    fn encode(&self, write_buf: &'static mut [u8]) -> Store;
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf>;
     fn buffer_size_required(&self) -> usize;
 }
 
@@ -16,13 +16,13 @@ pub type DecodeFn = fn(&[u8]) -> String;
 /// Contains the decode function required to decode `buffer` back into a `String`
 /// representation.
 #[derive(Clone)]
-pub struct Store {
+pub struct Store<'buf> {
     decode_fn: DecodeFn,
-    buffer: &'static [u8],
+    buffer: &'buf [u8],
 }
 
-impl Store {
-    pub fn new(decode_fn: DecodeFn, buffer: &'static [u8]) -> Store {
+impl Store<'_> {
+    pub fn new(decode_fn: DecodeFn, buffer: &[u8]) -> Store {
         Store { decode_fn, buffer }
     }
 
@@ -31,7 +31,7 @@ impl Store {
     }
 }
 
-impl Display for Store {
+impl Display for Store<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_string())
     }
@@ -39,7 +39,7 @@ impl Display for Store {
 
 macro_rules! gen_encode_decode {
     ($name:ident, $primitive:ty) => {
-        pub fn $name(val: $primitive, write_buf: &'static mut [u8]) -> Store {
+        pub fn $name(val: $primitive, write_buf: &mut [u8]) -> Store {
             assert!(std::mem::size_of::<$primitive>() == write_buf.len());
 
             fn decode(read_buf: &[u8]) -> String {
@@ -61,7 +61,7 @@ gen_encode_decode!(encode_f32, f32);
 gen_encode_decode!(encode_f64, f64);
 gen_encode_decode!(encode_usize, usize);
 
-pub fn encode_str(val: &str, write_buf: &'static mut [u8]) -> Store {
+pub fn encode_str<'buf>(val: &str, write_buf: &'buf mut [u8]) -> Store<'buf> {
     assert!(val.len() == write_buf.len());
     fn decode(read_buf: &[u8]) -> String {
         let x = from_utf8(read_buf).unwrap();
@@ -72,7 +72,7 @@ pub fn encode_str(val: &str, write_buf: &'static mut [u8]) -> Store {
 }
 
 /// Eager evaluation into a String for debug structs
-pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &'static mut [u8]) -> Store {
+pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &mut [u8]) -> Store {
     let val_string = format!("{:?}", val);
     assert!(val_string.len() == write_buf.len());
 
