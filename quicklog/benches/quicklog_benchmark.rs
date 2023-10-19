@@ -45,7 +45,7 @@ struct Nested {
 }
 
 impl Serialize for BigStruct {
-    fn encode(&self, write_buf: &'static mut [u8]) -> Store {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
         fn decode(buf: &[u8]) -> String {
             let (mut _head, mut tail) = buf.split_at(0);
             let mut vec = vec![];
