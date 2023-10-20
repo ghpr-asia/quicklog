@@ -38,6 +38,11 @@ error[E0599]: no method named `encode` found for struct `Something` in the curre
    = note: the following trait defines an item `encode`, perhaps you need to implement it:
            candidate #1: `Serialize`
    = note: this error originates in the macro `quicklog::make_store` which comes from the expansion of the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: one of the expressions' fields has a method of the same name
+  --> src/macros.rs
+   |
+   |             .some_str.encode($crate::logger().get_chunk_as_mut($serializable.buffer_size_required()))
+   |              +++++++++
 
 error[E0599]: no method named `buffer_size_required` found for struct `Something` in the current scope
   --> tests/failures/struct_missing_display.rs:12:5
@@ -54,3 +59,8 @@ error[E0599]: no method named `buffer_size_required` found for struct `Something
    = note: the following trait defines an item `buffer_size_required`, perhaps you need to implement it:
            candidate #1: `Serialize`
    = note: this error originates in the macro `quicklog::make_store` which comes from the expansion of the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: one of the expressions' fields has a method of the same name
+  --> src/macros.rs
+   |
+   |             .encode($crate::logger().get_chunk_as_mut($serializable.some_str.buffer_size_required()))
+   |                                                                     +++++++++
