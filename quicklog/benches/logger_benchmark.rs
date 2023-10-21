@@ -26,30 +26,36 @@ struct Nested {
 
 impl Serialize for BigStruct {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
-        let (mut _head, mut tail) = write_buf.split_at_mut(0);
-        for i in 0..100 {
-            (_head, tail) = tail.split_at_mut(4);
+        let (chunk, _) = write_buf.split_at_mut(self.buffer_size_required());
+
+        let elm_size = std::mem::size_of::<i32>();
+        let (vec_chunk, str_chunk) = chunk.split_at_mut(self.vec.len() * elm_size);
+        let (mut _head, mut _tail) = vec_chunk.split_at_mut(0);
+        for i in 0..self.vec.len() {
+            (_head, _tail) = _tail.split_at_mut(elm_size);
             _head.copy_from_slice(&self.vec[i].to_le_bytes())
         }
 
-        tail.copy_from_slice(self.some.as_bytes());
+        _ = self.some.encode(str_chunk);
 
-        Store::new(Self::decode, write_buf)
+        Store::new(Self::decode, chunk)
     }
 
     fn decode(buf: &[u8]) -> (String, &[u8]) {
         let (mut _head, mut tail) = buf.split_at(0);
-        let mut vec = vec![];
-        for _ in 0..100 {
-            (_head, tail) = tail.split_at(4);
-            vec.push(i32::from_le_bytes(_head.try_into().unwrap()));
+        let mut arr = [0; 100];
+        let elm_size = std::mem::size_of::<i32>();
+        for i in &mut arr {
+            (_head, tail) = tail.split_at(elm_size);
+            *i = i32::from_le_bytes(_head.try_into().unwrap());
         }
         let (s, rest) = <&str as Serialize>::decode(tail);
-        (format!("vec: {:?}, str: {}", vec, s), rest)
+
+        (format!("vec: {:?}, str: {}", arr, s), rest)
     }
 
     fn buffer_size_required(&self) -> usize {
-        std::mem::size_of::<i32>() * 100 + self.some.len()
+        std::mem::size_of::<i32>() * 100 + self.some.buffer_size_required()
     }
 }
 

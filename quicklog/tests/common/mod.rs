@@ -106,17 +106,15 @@ pub(crate) struct SerializeStruct {
 
 impl Serialize for SerializeStruct {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
-        write_buf.copy_from_slice(self.symbol.as_bytes());
-        Store::new(Self::decode, write_buf)
+        self.symbol.as_str().encode(write_buf)
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-        let x = std::str::from_utf8(read_buf).unwrap();
-        (x.to_string(), &[])
+        <&str as Serialize>::decode(read_buf)
     }
 
     fn buffer_size_required(&self) -> usize {
-        self.symbol.len()
+        self.symbol.as_str().buffer_size_required()
     }
 }
 
@@ -128,30 +126,36 @@ pub(crate) struct BigStruct {
 
 impl Serialize for BigStruct {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
-        let (mut _head, mut tail) = write_buf.split_at_mut(0);
-        for i in 0..100 {
-            (_head, tail) = tail.split_at_mut(4);
+        let (chunk, _) = write_buf.split_at_mut(self.buffer_size_required());
+
+        let elm_size = std::mem::size_of::<i32>();
+        let (vec_chunk, str_chunk) = chunk.split_at_mut(self.vec.len() * elm_size);
+        let (mut _head, mut _tail) = vec_chunk.split_at_mut(0);
+        for i in 0..self.vec.len() {
+            (_head, _tail) = _tail.split_at_mut(elm_size);
             _head.copy_from_slice(&self.vec[i].to_le_bytes())
         }
 
-        tail.copy_from_slice(self.some.as_bytes());
+        _ = self.some.encode(str_chunk);
 
-        Store::new(Self::decode, write_buf)
+        Store::new(Self::decode, chunk)
     }
 
     fn decode(buf: &[u8]) -> (String, &[u8]) {
         let (mut _head, mut tail) = buf.split_at(0);
-        let mut vec = vec![];
-        for _ in 0..100 {
-            (_head, tail) = tail.split_at(4);
-            vec.push(i32::from_le_bytes(_head.try_into().unwrap()));
+        let mut arr = [0; 100];
+        let elm_size = std::mem::size_of::<i32>();
+        for i in 0..100 {
+            (_head, tail) = tail.split_at(elm_size);
+            arr[i] = i32::from_le_bytes(_head.try_into().unwrap());
         }
-        let s = std::str::from_utf8(tail).unwrap();
-        (format!("vec: {:?}, str: {}", vec, s), &[])
+        let (s, rest) = <&str as Serialize>::decode(tail);
+
+        (format!("vec: {:?}, str: {}", arr, s), rest)
     }
 
     fn buffer_size_required(&self) -> usize {
-        std::mem::size_of::<i32>() * 100 + self.some.len()
+        std::mem::size_of::<i32>() * 100 + self.some.buffer_size_required()
     }
 }
 

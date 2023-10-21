@@ -14,6 +14,9 @@ pub trait Serialize {
 /// Function pointer which decodes a byte buffer back into `String` representation
 pub type DecodeFn = fn(&[u8]) -> (String, &[u8]);
 
+/// Number of bytes it takes to store the size of a type.
+pub const SIZE_LENGTH: usize = std::mem::size_of::<usize>();
+
 /// Contains the decode function required to decode `buffer` back into a `String`
 /// representation.
 #[derive(Clone)]
@@ -76,36 +79,42 @@ gen_serialize!(usize);
 
 impl Serialize for &str {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
-        assert!(self.len() == write_buf.len());
-        write_buf.copy_from_slice(self.as_bytes());
-        Store::new(Self::decode, write_buf)
+        let str_len = self.len();
+        let (chunk, _) = write_buf.split_at_mut(str_len + SIZE_LENGTH);
+        let (len_chunk, str_chunk) = chunk.split_at_mut(SIZE_LENGTH);
+
+        len_chunk.copy_from_slice(&str_len.to_le_bytes());
+        str_chunk.copy_from_slice(self.as_bytes());
+
+        Store::new(Self::decode, chunk)
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-        let x = from_utf8(read_buf).unwrap();
-        (x.to_string(), &[])
+        let (len_chunk, chunk) = read_buf.split_at(SIZE_LENGTH);
+        let str_len = usize::from_le_bytes(len_chunk.try_into().unwrap());
+
+        let (str_chunk, rest) = chunk.split_at(str_len);
+        let s = from_utf8(str_chunk).unwrap();
+
+        (s.to_string(), rest)
     }
 
     fn buffer_size_required(&self) -> usize {
-        self.len()
+        SIZE_LENGTH + self.len()
     }
 }
 
 /// Eager evaluation into a String for debug structs
 pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &mut [u8]) -> Store {
     let val_string = format!("{:?}", val);
-    // TODO: change back to strict equality when Serialize implemented, to use
-    // `buffer_size_required`
-    assert!(val_string.len() <= write_buf.len());
+    let str_len = val_string.len();
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-        let x = from_utf8(read_buf).unwrap();
-        (x.to_string(), &[])
-    }
+    let (chunk, _) = write_buf.split_at_mut(str_len + SIZE_LENGTH);
+    let (len_chunk, str_chunk) = chunk.split_at_mut(SIZE_LENGTH);
+    len_chunk.copy_from_slice(&str_len.to_le_bytes());
+    str_chunk.copy_from_slice(val_string.as_bytes());
 
-    let (chunk, _) = write_buf.split_at_mut(val_string.len());
-    chunk.copy_from_slice(val_string.as_bytes());
-    Store::new(decode, chunk)
+    Store::new(<&str as Serialize>::decode, chunk)
 }
 
 #[cfg(test)]
@@ -162,8 +171,7 @@ mod tests {
     fn serialize_str() {
         let mut buf = [0; 128];
         let s = "hello world";
-        let (s_chunk, _) = buf.split_at_mut(s.buffer_size_required());
-        let store = s.encode(s_chunk);
+        let store = s.encode(&mut buf);
 
         assert_eq!(s, format!("{}", store).as_str())
     }
