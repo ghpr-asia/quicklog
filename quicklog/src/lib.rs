@@ -88,7 +88,8 @@
 //! }
 //!
 //! impl Serialize for SomeStruct {
-//!    fn encode(&self, write_buf: &'static mut [u8]) -> Store { /* some impl */ }
+//!    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> { /* some impl */ }
+//!    fn decode(read_buf: &[u8]) -> (String, &[u8]) { /* some impl */ }
 //!    fn buffer_size_required(&self) -> usize { /* some impl */ }
 //! }
 //!

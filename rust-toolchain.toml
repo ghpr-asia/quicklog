@@ -1,0 +1,9 @@
+# By default, `cargo build` should use the same toolchain as our CI/CD pipelines.
+# The CI/CD version is defined in `.gitlab-ci.yml`.
+
+# Note: this config can be overridden on CLI with environment `RUSTUP_TOOLCHAIN=stable cargo ...`,
+# or `cargo +stable ...`
+# https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file
+[toolchain]
+channel = "1.72"
+profile = "default"
