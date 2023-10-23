@@ -3,11 +3,61 @@ use std::{fmt::Display, str::from_utf8};
 pub mod buffer;
 
 /// Allows specification of a custom way to serialize the Struct.
-/// Additionally, this stores the contents serialized into a buffer, which does
-/// not require allocation and could speed things up.
+///
+/// This is the key trait to implement to improve logging performance. While
+/// `Debug` and `Display` usages are eagerly formatted on the hot path,
+/// `Serialize` usages copy the minimal required bytes to a separate buffer,
+/// and then allow for formatting when flushing elsewhere. Consider ensuring
+/// that all logging arguments implement `Serialize` for best performance.
+///
+/// Furthermore, you would usually not be required to implement `Serialize` by
+/// hand for most types. The option that would work for most use cases would be
+/// [deriving `Serialize`](crate::Serialize), similar to how `Debug` is
+/// derived on user-defined types. Although, do note that all fields on the user
+/// struct must also derive/implement `Serialize` (similar to `Debug` again).
+///
+/// For instance, this would work since all fields have a `Serialize`
+/// implementation:
+/// ```
+/// use quicklog::Serialize;
+///
+/// #[derive(Serialize)]
+/// struct SerializeStruct {
+///     a: usize,
+///     b: i32,
+///     c: &'static str,
+/// }
+/// ```
+///
+/// But a field with a type that does not implement `Serialize` will fail to compile:
+/// ```compile_fail
+/// use quicklog::Serialize;
+///
+/// struct NoSerializeStruct {
+///     a: &'static str,
+///     b: &'static str,
+/// }
+///
+/// #[derive(Serialize)]
+/// struct SerializeStruct {
+///     a: usize,
+///     b: i32,
+///     // doesn't implement `Serialize`!
+///     c: NoSerializeStruct,
+/// }
+/// ```
 pub trait Serialize {
+    /// Describes how to encode the implementing type into a byte buffer.
+    ///
+    /// Returns a [Store](crate::serialize::Store) and the remainder of `write_buf`
+    /// passed in that was not written to.
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]);
+    /// Describes how to decode the implementing type from a byte buffer.
+    ///
+    /// Returns a formatted String after parsing the byte buffer, as well as
+    /// the remainder of `read_buf` pass in that was not read.
     fn decode(read_buf: &[u8]) -> (String, &[u8]);
+    /// The number of bytes required to `encode` the type into a byte buffer.
     fn buffer_size_required(&self) -> usize;
 }
 

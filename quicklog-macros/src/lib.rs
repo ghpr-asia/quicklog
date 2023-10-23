@@ -35,6 +35,8 @@ pub fn error(input: TokenStream) -> TokenStream {
     expand(Level::Error, input)
 }
 
+/// Derive macro for generating `quicklog` `Serialize`
+/// implementations.
 #[proc_macro_derive(Serialize)]
 pub fn derive_serialize(input: TokenStream) -> TokenStream {
     derive(input)
