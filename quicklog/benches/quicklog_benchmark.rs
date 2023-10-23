@@ -1,5 +1,3 @@
-use std::str::from_utf8;
-
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use delog::render::DefaultRenderer;
 use quanta::Instant;

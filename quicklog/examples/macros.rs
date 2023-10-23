@@ -21,8 +21,12 @@ impl Serialize for S {
         self.i.encode(write_buf)
     }
 
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        i32::decode(read_buf)
+    }
+
     fn buffer_size_required(&self) -> usize {
-        std::mem::size_of_val(&self.i)
+        self.i.buffer_size_required()
     }
 }
 
