@@ -7,11 +7,12 @@ pub mod buffer;
 /// not require allocation and could speed things up.
 pub trait Serialize {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf>;
+    fn decode(read_buf: &[u8]) -> (String, &[u8]);
     fn buffer_size_required(&self) -> usize;
 }
 
 /// Function pointer which decodes a byte buffer back into `String` representation
-pub type DecodeFn = fn(&[u8]) -> String;
+pub type DecodeFn = fn(&[u8]) -> (String, &[u8]);
 
 /// Contains the decode function required to decode `buffer` back into a `String`
 /// representation.
@@ -27,7 +28,8 @@ impl Store<'_> {
     }
 
     pub fn as_string(&self) -> String {
-        (self.decode_fn)(self.buffer)
+        let (s, _) = (self.decode_fn)(self.buffer);
+        s
     }
 }
 
@@ -42,15 +44,18 @@ macro_rules! gen_serialize {
         impl Serialize for $primitive {
             fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
                 assert!(std::mem::size_of::<$primitive>() == write_buf.len());
-                fn decode(read_buf: &[u8]) -> String {
-                    let x = <$primitive>::from_le_bytes(read_buf.try_into().unwrap());
-                    format!("{}", x)
-                }
 
                 let size = std::mem::size_of::<$primitive>();
                 let (x, _) = write_buf.split_at_mut(size);
                 x.copy_from_slice(&self.to_le_bytes());
-                Store::new(decode, &*x)
+                Store::new(Self::decode, x)
+            }
+
+            fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+                let (chunk, rest) = read_buf.split_at(std::mem::size_of::<$primitive>());
+                let x = <$primitive>::from_le_bytes(chunk.try_into().unwrap());
+
+                (format!("{}", x), rest)
             }
 
             fn buffer_size_required(&self) -> usize {
@@ -72,12 +77,13 @@ gen_serialize!(usize);
 impl Serialize for &str {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
         assert!(self.len() == write_buf.len());
-        fn decode(read_buf: &[u8]) -> String {
-            let x = from_utf8(read_buf).unwrap();
-            x.to_string()
-        }
         write_buf.copy_from_slice(self.as_bytes());
-        Store::new(decode, write_buf)
+        Store::new(Self::decode, write_buf)
+    }
+
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        let x = from_utf8(read_buf).unwrap();
+        (x.to_string(), &[])
     }
 
     fn buffer_size_required(&self) -> usize {
@@ -92,9 +98,9 @@ pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &mut [u8]) -> Store {
     // `buffer_size_required`
     assert!(val_string.len() <= write_buf.len());
 
-    fn decode(read_buf: &[u8]) -> String {
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
         let x = from_utf8(read_buf).unwrap();
-        x.to_string()
+        (x.to_string(), &[])
     }
 
     let (chunk, _) = write_buf.split_at_mut(val_string.len());
@@ -115,7 +121,7 @@ mod tests {
 
             let x: $primitive = $val;
             let x_store = x.encode(&mut buf);
-            assert_eq!(format!("{}", x), (x_store.decode_fn)(&buf));
+            assert_eq!(format!("{}", x), format!("{}", x_store));
         }};
     }
 
@@ -146,13 +152,9 @@ mod tests {
         let b_store = b.encode(b_chunk);
         let c_store = c.encode(c_chunk);
 
-        let a_str = (a_store.decode_fn)(a_store.buffer);
-        let b_str = (b_store.decode_fn)(b_store.buffer);
-        let c_str = (c_store.decode_fn)(c_store.buffer);
-
         assert_eq!(
             format!("{} {} {}", a, b, c),
-            format!("{} {} {}", a_str, b_str, c_str)
+            format!("{} {} {}", a_store, b_store, c_store)
         )
     }
 

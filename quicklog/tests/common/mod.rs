@@ -106,12 +106,13 @@ pub(crate) struct SerializeStruct {
 
 impl Serialize for SerializeStruct {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
-        fn decode(read_buf: &[u8]) -> String {
-            let x = std::str::from_utf8(read_buf).unwrap();
-            x.to_string()
-        }
         write_buf.copy_from_slice(self.symbol.as_bytes());
-        Store::new(decode, write_buf)
+        Store::new(Self::decode, write_buf)
+    }
+
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        let x = std::str::from_utf8(read_buf).unwrap();
+        (x.to_string(), &[])
     }
 
     fn buffer_size_required(&self) -> usize {
@@ -127,17 +128,6 @@ pub(crate) struct BigStruct {
 
 impl Serialize for BigStruct {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
-        fn decode(buf: &[u8]) -> String {
-            let (mut _head, mut tail) = buf.split_at(0);
-            let mut vec = vec![];
-            for _ in 0..100 {
-                (_head, tail) = tail.split_at(4);
-                vec.push(i32::from_le_bytes(_head.try_into().unwrap()));
-            }
-            let s = std::str::from_utf8(tail).unwrap();
-            format!("vec: {:?}, str: {}", vec, s)
-        }
-
         let (mut _head, mut tail) = write_buf.split_at_mut(0);
         for i in 0..100 {
             (_head, tail) = tail.split_at_mut(4);
@@ -146,7 +136,18 @@ impl Serialize for BigStruct {
 
         tail.copy_from_slice(self.some.as_bytes());
 
-        Store::new(decode, write_buf)
+        Store::new(Self::decode, write_buf)
+    }
+
+    fn decode(buf: &[u8]) -> (String, &[u8]) {
+        let (mut _head, mut tail) = buf.split_at(0);
+        let mut vec = vec![];
+        for _ in 0..100 {
+            (_head, tail) = tail.split_at(4);
+            vec.push(i32::from_le_bytes(_head.try_into().unwrap()));
+        }
+        let s = std::str::from_utf8(tail).unwrap();
+        (format!("vec: {:?}, str: {}", vec, s), &[])
     }
 
     fn buffer_size_required(&self) -> usize {
