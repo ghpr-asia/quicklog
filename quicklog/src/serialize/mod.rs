@@ -6,7 +6,7 @@ pub mod buffer;
 /// Additionally, this stores the contents serialized into a buffer, which does
 /// not require allocation and could speed things up.
 pub trait Serialize {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf>;
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]);
     fn decode(read_buf: &[u8]) -> (String, &[u8]);
     fn buffer_size_required(&self) -> usize;
 }
@@ -45,13 +45,12 @@ impl Display for Store<'_> {
 macro_rules! gen_serialize {
     ($primitive:ty) => {
         impl Serialize for $primitive {
-            fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
-                assert!(std::mem::size_of::<$primitive>() == write_buf.len());
-
-                let size = std::mem::size_of::<$primitive>();
-                let (x, _) = write_buf.split_at_mut(size);
+            fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+                let size = self.buffer_size_required();
+                let (x, rest) = write_buf.split_at_mut(size);
                 x.copy_from_slice(&self.to_le_bytes());
-                Store::new(Self::decode, x)
+
+                (Store::new(Self::decode, x), rest)
             }
 
             fn decode(read_buf: &[u8]) -> (String, &[u8]) {
@@ -78,15 +77,15 @@ gen_serialize!(u64);
 gen_serialize!(usize);
 
 impl Serialize for &str {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
         let str_len = self.len();
-        let (chunk, _) = write_buf.split_at_mut(str_len + SIZE_LENGTH);
+        let (chunk, rest) = write_buf.split_at_mut(str_len + SIZE_LENGTH);
         let (len_chunk, str_chunk) = chunk.split_at_mut(SIZE_LENGTH);
 
         len_chunk.copy_from_slice(&str_len.to_le_bytes());
         str_chunk.copy_from_slice(self.as_bytes());
 
-        Store::new(Self::decode, chunk)
+        (Store::new(Self::decode, chunk), rest)
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
@@ -105,16 +104,16 @@ impl Serialize for &str {
 }
 
 /// Eager evaluation into a String for debug structs
-pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &mut [u8]) -> Store {
+pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &mut [u8]) -> (Store, &mut [u8]) {
     let val_string = format!("{:?}", val);
     let str_len = val_string.len();
 
-    let (chunk, _) = write_buf.split_at_mut(str_len + SIZE_LENGTH);
+    let (chunk, rest) = write_buf.split_at_mut(str_len + SIZE_LENGTH);
     let (len_chunk, str_chunk) = chunk.split_at_mut(SIZE_LENGTH);
     len_chunk.copy_from_slice(&str_len.to_le_bytes());
     str_chunk.copy_from_slice(val_string.as_bytes());
 
-    Store::new(<&str as Serialize>::decode, chunk)
+    (Store::new(<&str as Serialize>::decode, chunk), rest)
 }
 
 #[cfg(test)]
@@ -129,7 +128,7 @@ mod tests {
             let mut buf = [0u8; BUF_SIZE];
 
             let x: $primitive = $val;
-            let x_store = x.encode(&mut buf);
+            let (x_store, _) = x.encode(&mut buf);
             assert_eq!(format!("{}", x), format!("{}", x_store));
         }};
     }
@@ -153,13 +152,9 @@ mod tests {
         let b: u32 = 999;
         let c: usize = 100000;
 
-        let (a_chunk, chunk) = buf.split_at_mut(a.buffer_size_required());
-        let (b_chunk, chunk) = chunk.split_at_mut(b.buffer_size_required());
-        let (c_chunk, _) = chunk.split_at_mut(c.buffer_size_required());
-
-        let a_store = a.encode(a_chunk);
-        let b_store = b.encode(b_chunk);
-        let c_store = c.encode(c_chunk);
+        let (a_store, chunk) = a.encode(&mut buf);
+        let (b_store, chunk) = b.encode(chunk);
+        let (c_store, _) = c.encode(chunk);
 
         assert_eq!(
             format!("{} {} {}", a, b, c),
@@ -171,7 +166,7 @@ mod tests {
     fn serialize_str() {
         let mut buf = [0; 128];
         let s = "hello world";
-        let store = s.encode(&mut buf);
+        let (store, _) = s.encode(&mut buf);
 
         assert_eq!(s, format!("{}", store).as_str())
     }
@@ -186,7 +181,7 @@ mod tests {
 
         let mut buf = [0; 128];
         let s = DebugStruct { s: "Hello World" };
-        let store = encode_debug(&s, &mut buf);
+        let (store, _) = encode_debug(&s, &mut buf);
 
         assert_eq!(format!("{:?}", s), format!("{}", store))
     }

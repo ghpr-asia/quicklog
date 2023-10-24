@@ -25,8 +25,8 @@ struct Nested {
 }
 
 impl Serialize for BigStruct {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
-        let (chunk, _) = write_buf.split_at_mut(self.buffer_size_required());
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
 
         let elm_size = std::mem::size_of::<i32>();
         let (vec_chunk, str_chunk) = chunk.split_at_mut(self.vec.len() * elm_size);
@@ -38,7 +38,7 @@ impl Serialize for BigStruct {
 
         _ = self.some.encode(str_chunk);
 
-        Store::new(Self::decode, chunk)
+        (Store::new(Self::decode, chunk), rest)
     }
 
     fn decode(buf: &[u8]) -> (String, &[u8]) {
