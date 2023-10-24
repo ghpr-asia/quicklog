@@ -10,8 +10,12 @@ name = "quicklog"
 path = "src/lib.rs"
 
 [[test]]
-name = "tests"
+name = "ui"
 path = "tests/ui.rs"
+
+[[test]]
+name = "derive"
+path = "tests/derive/derive.rs"
 
 [dependencies]
 lazy_format = "2.0.0"
