@@ -153,6 +153,20 @@ impl Serialize for &str {
     }
 }
 
+impl Serialize for String {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+        self.as_str().encode(write_buf)
+    }
+
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        <&str as Serialize>::decode(read_buf)
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        self.as_str().buffer_size_required()
+    }
+}
+
 /// Eager evaluation into a String for debug structs
 pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &mut [u8]) -> (Store, &mut [u8]) {
     let val_string = format!("{:?}", val);
@@ -219,6 +233,15 @@ mod tests {
         let (store, _) = s.encode(&mut buf);
 
         assert_eq!(s, format!("{}", store).as_str())
+    }
+
+    #[test]
+    fn serialize_string() {
+        let mut buf = [0; 128];
+        let s = "hello world".to_string();
+        let (store, _) = s.encode(&mut buf);
+
+        assert_eq!(s, format!("{}", store))
     }
 
     #[test]
