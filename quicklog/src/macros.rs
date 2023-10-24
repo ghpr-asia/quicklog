@@ -75,10 +75,12 @@ macro_rules! is_level_enabled {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! make_store {
-    ($serializable:expr) => {
-        $serializable
-            .encode($crate::logger().get_chunk_as_mut($serializable.buffer_size_required()))
-    };
+    ($serializable:expr) => {{
+        let (store, _) = $serializable
+            .encode($crate::logger().get_chunk_as_mut($serializable.buffer_size_required()));
+
+        store
+    }};
 }
 
 /// Allows flushing onto an implementor of [`Flush`], which can be modified with

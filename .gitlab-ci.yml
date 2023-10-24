@@ -24,6 +24,7 @@ variables:
   GIT_SUBMODULE_STRATEGY: recursive
   GIT_SUBMODULE_UPDATE_FLAGS: --jobs 4
   LIBCLANG_PATH: "/opt/clang130/lib64"
+  GHP_CI_IMAGE: us-central1-docker.pkg.dev/ghpr-mgmt/dkr/ghp-base-rust:2.0.0
   GHP_IMAGE_LOCATION: us-central1
   GHP_RUST_VERSION: "1.72.0"
 
