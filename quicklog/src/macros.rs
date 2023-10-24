@@ -353,6 +353,17 @@ macro_rules! flush {
     };
 }
 
+/// Allows flushing onto an implementor of [`Flush`], which can be modified with
+/// [`with_flush!`] macro and continues trying to flush until no more lines need flushing.
+///
+/// [`Flush`]: `quicklog_flush::Flush`
+#[macro_export]
+macro_rules! flush_all {
+    () => {
+        while let Ok(()) = $crate::try_flush!() {}
+    };
+}
+
 /// Trace level log
 #[macro_export]
 macro_rules! trace {
