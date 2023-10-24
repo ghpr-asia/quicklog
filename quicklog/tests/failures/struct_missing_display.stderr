@@ -41,7 +41,7 @@ error[E0599]: no method named `encode` found for struct `Something` in the curre
 help: one of the expressions' fields has a method of the same name
   --> src/macros.rs
    |
-   |             .some_str.encode($crate::logger().get_chunk_as_mut($serializable.buffer_size_required()))
+   |             .some_str.encode($crate::logger().get_chunk_as_mut($serializable.buffer_size_required()));
    |              +++++++++
 
 error[E0599]: no method named `buffer_size_required` found for struct `Something` in the current scope
@@ -62,5 +62,5 @@ error[E0599]: no method named `buffer_size_required` found for struct `Something
 help: one of the expressions' fields has a method of the same name
   --> src/macros.rs
    |
-   |             .encode($crate::logger().get_chunk_as_mut($serializable.some_str.buffer_size_required()))
+   |             .encode($crate::logger().get_chunk_as_mut($serializable.some_str.buffer_size_required()));
    |                                                                     +++++++++

@@ -17,7 +17,7 @@ impl std::fmt::Display for S {
 }
 
 impl Serialize for S {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
         self.i.encode(write_buf)
     }
 

@@ -76,8 +76,10 @@ macro_rules! is_level_enabled {
 macro_rules! make_store {
     ($serializable:expr) => {{
         use $crate::serialize::Serialize;
-        $serializable
-            .encode($crate::logger().get_chunk_as_mut($serializable.buffer_size_required()))
+        let (store, _) = $serializable
+            .encode($crate::logger().get_chunk_as_mut($serializable.buffer_size_required()));
+
+        store
     }};
 }
 
