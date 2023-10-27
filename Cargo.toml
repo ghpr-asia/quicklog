@@ -6,3 +6,11 @@ members = [
   "quicklog-flush",
   "quicklog-macros",
 ]
+
+[profile.release]
+lto = "thin"
+
+[profile.opt]
+inherits = "release"
+codegen-units = 1
+lto = "fat"
