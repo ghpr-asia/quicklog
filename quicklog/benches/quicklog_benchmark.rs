@@ -9,7 +9,9 @@ use quicklog_flush::noop_flusher::NoopFlusher;
 
 macro_rules! loop_with_cleanup {
     ($bencher:expr, $loop_f:expr) => {
-        loop_with_cleanup!($bencher, $loop_f, { quicklog::flush!() })
+        loop_with_cleanup!($bencher, $loop_f, {
+            while let Ok(()) = quicklog::try_flush!() {}
+        })
     };
 
     ($bencher:expr, $loop_f:expr, $cleanup_f:expr) => {{
