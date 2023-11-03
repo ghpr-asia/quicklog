@@ -12,5 +12,8 @@ fn main() {
     let mut buf = [0; 128];
 
     let (store, _) = s.encode(&mut buf);
-    assert_eq!(format!("{}", s.size), format!("{}", store))
+    assert_eq!(
+        format!("TestStruct {{ size: {} }}", s.size),
+        format!("{}", store)
+    )
 }

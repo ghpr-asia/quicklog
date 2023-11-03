@@ -1,5 +1,7 @@
+use std::fmt::Write;
+
 use proc_macro::TokenStream;
-use proc_macro2::{Ident, TokenStream as TokenStream2};
+use proc_macro2::Ident;
 use quote::quote;
 use syn::{parse_macro_input, Data, DataStruct, DeriveInput, Type};
 
@@ -21,12 +23,12 @@ use syn::{parse_macro_input, Data, DataStruct, DeriveInput, Type};
 ///     c: u32,
 /// }
 ///
-/// // Generated code
+/// // Generated code (slightly simplified)
 /// impl quicklog::serialize::Serialize for TestStruct {
 ///     fn encode<'buf>(
 ///         &self,
 ///         write_buf: &'buf mut [u8],
-///     ) -> quicklog::serialize::Store<'buf> {
+///     ) -> (quicklog::serialize::Store<'buf>, &'buf mut [u8]) {
 ///         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
 ///         let (_, chunk_rest) = self.a.encode(chunk);
 ///         let (_, chunk_rest) = self.b.encode(chunk_rest);
@@ -39,10 +41,7 @@ use syn::{parse_macro_input, Data, DataStruct, DeriveInput, Type};
 ///         let (b, read_buf) = <i32 as quicklog::serialize::Serialize>::decode(read_buf);
 ///         let (c, read_buf) = <u32 as quicklog::serialize::Serialize>::decode(read_buf);
 ///         (
-///             {
-///                 let res = ::alloc::fmt::format(format_args!("{0} {1} {2}", a, b, c));
-///                 res
-///             },
+///             format!("TestStruct {{ a: {0}, b: {1}, c: {2} }}", a, b, c),
 ///             read_buf,
 ///         )
 ///     }
@@ -70,58 +69,29 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
         .filter_map(|field| field.ident.as_ref())
         .collect();
 
-    // If we have > 1 field, then we split once at the top-level to get the
-    // single chunk that has enough capacity to encode all the fields.
-    // From there, each field will just encode into this single chunk.
-    //
-    // Otherwise, if we only have 1 field, we can simply let the single field
-    // directly read off the main `write_buf` chunk and return the remainder
-    // unread.
-    let (initial_chunk_split, chunk_encode_and_store): (TokenStream2, TokenStream2) =
-        if field_names.len() > 1 {
-            // Split off just large enough chunk to be kept in final Store
-            let initial_split = quote! {
-                let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-            };
-
-            // Sequentially encode
-            let encode: Vec<_> = field_names
-                .iter()
-                .enumerate()
-                .map(|(idx, name)| {
-                    if idx == 0 {
-                        quote! {
-                            let (_, chunk_rest) = self.#name.encode(chunk);
-                        }
-                    } else {
-                        quote! {
-                            let (_, chunk_rest) = self.#name.encode(chunk_rest);
-                        }
-                    }
-                })
-                .collect();
-
-            let encode_and_store = quote! {
-                #(#encode)*
-
-                assert!(chunk_rest.is_empty());
-                (quicklog::serialize::Store::new(Self::decode, chunk), rest)
-            };
-
-            (initial_split, encode_and_store)
-        } else {
-            let initial_split = quote! {
-                let chunk = write_buf;
-            };
-
-            // Only one field, so can directly encode in main chunk
-            let field_name = &field_names[0];
-            let encode_and_store = quote! {
-                self.#field_name.encode(chunk)
-            };
-
-            (initial_split, encode_and_store)
-        };
+    // Sequentially encode
+    let initial_split = quote! {
+        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
+    };
+    let encode: Vec<_> = field_names
+        .iter()
+        .enumerate()
+        .map(|(idx, name)| {
+            if idx == 0 {
+                quote! {
+                    let (_, chunk_rest) = self.#name.encode(chunk);
+                }
+            } else {
+                quote! {
+                    let (_, chunk_rest) = self.#name.encode(chunk_rest);
+                }
+            }
+        })
+        .collect();
+    let finish_store = quote! {
+        assert!(chunk_rest.is_empty());
+        (quicklog::serialize::Store::new(Self::decode, chunk), rest)
+    };
 
     // Combine decode implementations from all field types
     let field_tys: Vec<_> = fields
@@ -144,21 +114,28 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
         .collect();
 
     // Assuming that each field in the output should just be separated by a space
-    // TODO: proper field naming?
+    let num_fields = field_names.len();
     let mut decode_fmt_str = String::new();
-    for _ in 0..fields.len() {
-        decode_fmt_str.push_str("{} ");
+    decode_fmt_str.push_str(&struct_name.to_string());
+    decode_fmt_str.push_str(" {{ ");
+    for (idx, field_name) in field_names.iter().enumerate() {
+        let name = field_name.to_string();
+        if idx < num_fields - 1 {
+            // String automatically resizes if not enough capacity
+            write!(&mut decode_fmt_str, "{}: {{}}, ", name).unwrap();
+        } else {
+            write!(&mut decode_fmt_str, "{}: {{}} }}}}", name).unwrap();
+        }
     }
-    let decode_fmt_str = decode_fmt_str.trim_end();
 
     quote! {
         impl #impl_generics quicklog::serialize::Serialize for #struct_name #ty_generics #where_clause {
             fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (quicklog::serialize::Store<'buf>, &'buf mut [u8]) {
-                // Perform initial split to get combined byte buffer that will be
-                // sufficient for all fields to be encoded in
-                #initial_chunk_split
+                #initial_split
 
-                #chunk_encode_and_store
+                #(#encode)*
+
+                #finish_store
             }
 
             fn decode(read_buf: &[u8]) -> (String, &[u8]) {
