@@ -39,10 +39,10 @@ pub(crate) fn expand_parsed(level: Level, mut args: Args) -> TokenStream2 {
         .take()
         .map(|s| s.value())
         .unwrap_or_else(String::new);
-    // Insert extra spacing between format string and format fields for prefixed fields
-    // if prefixed fields exist
-    // e.g. info!(?debug_struct, "hello world {}", a) -> format!("hello world {} debug_struct={:?}", a,
-    // debug_struct)
+    // Insert extra spacing between format string and format fields for prefixed
+    // fields if prefixed fields exist
+    // e.g. info!(?debug_struct, "hello world {}", a) -> format!("hello world {}
+    // debug_struct={:?}", a, debug_struct)
     let mut special_fmt_str = if fmt_str.is_empty() { "" } else { " " }.to_string();
     for field in args.prefixed_fields.iter() {
         special_fmt_str.push_str(field.formatter().as_str());

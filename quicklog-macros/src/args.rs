@@ -79,7 +79,8 @@ impl FormatArg for PrefixedArg {
     }
 }
 
-/// Describes a logging argument of the form `a.b.c = ?debug_struct`, `a.b.c = some_expr()`
+/// Describes a logging argument of the form `a.b.c = ?debug_struct`, `a.b.c =
+/// some_expr()`
 pub(crate) struct NamedField<T: Parse> {
     /// `a.b.c`, optional
     pub(crate) name: Option<DotDelimitedIdent>,

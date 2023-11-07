@@ -1,11 +1,11 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
 
-// TODO: Duplicate of quicklog's Level, re-defined here to avoid including quicklog
-// as a dependency
-// Alternative is to break out a subset of quicklog into a separate `quicklog-core`
-// crate or something similar, but that can be done in a future more general
-// refactor.
+// TODO: Duplicate of quicklog's Level, re-defined here to avoid including
+// quicklog as a dependency
+// Alternative is to break out a subset of quicklog into a separate
+// `quicklog-core` crate or something similar, but that can be done in a future
+// more general refactor.
 pub(crate) enum Level {
     Trace = 0,
     Debug = 1,
