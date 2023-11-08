@@ -94,7 +94,7 @@ fn main() {
     info!(my_struct = ?s_0);
 
     // Debug, display, serialize all together
-    info!(debug_impl = ?s_0, display_impl = %s_0, serialize_impl = ^s_0);
+    info!(debug_impl = ?s_0, display_impl = %s_0, serialize_impl = s_0);
 
     // Debug/display/serialize with format string
     info!(debug_impl = ?s_0, "Display struct: {}", s_0);

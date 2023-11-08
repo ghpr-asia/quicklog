@@ -1,22 +1,9 @@
-error[E0277]: the trait bound `Something: quicklog::serialize::Serialize` is not satisfied
+error[E0277]: `SerializeStruct` doesn't implement `std::fmt::Display`
   --> tests/failures/struct_missing_display.rs:12:5
    |
-12 |     info!(^s1, "struct does not implement Serialize");
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `quicklog::serialize::Serialize` is not implemented for `Something`
+12 |     info!(%s1, "struct does not implement Display");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `SerializeStruct` cannot be formatted with the default formatter
    |
-   = help: the following other types implement trait `quicklog::serialize::Serialize`:
-             isize
-             i32
-             i64
-             usize
-             u32
-             u64
-             f32
-             f64
-           and $N others
-note: required by a bound in `serialize_check`
-  --> tests/failures/struct_missing_display.rs:12:5
-   |
-12 |     info!(^s1, "struct does not implement Serialize");
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `serialize_check`
-   = note: this error originates in the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = help: the trait `std::fmt::Display` is not implemented for `SerializeStruct`
+   = note: in format strings you may be able to use `{:?}` (or {:#?} for pretty-print) instead
+   = note: this error originates in the macro `format_args` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -180,7 +180,7 @@ fn bench_logger_serialize(b: &mut Bencher) {
         some: "The quick brown fox jumps over the lazy dog",
     });
     with_flush!(NoopFlusher);
-    loop_with_cleanup!(b, quicklog::info!(^bs, "Here's some text"));
+    loop_with_cleanup!(b, quicklog::info!(bs, "Here's some text"));
 }
 
 fn bench_logger_and_flush(b: &mut Bencher) {

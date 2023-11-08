@@ -22,24 +22,22 @@ pub(crate) type PrefixedFields = Punctuated<NamedField<PrefixedArg>, Token![,]>;
 pub(crate) type ExprFields = Punctuated<NamedField<Expr>, Token![,]>;
 
 /// Formatting argument with an optional prefix
-/// e.g. `?debug_struct`, `%display_struct`, `^serialize_struct`, `some_struct`
+/// e.g. `?debug_struct`, `%display_struct`, `serialize_struct`
 #[derive(Clone)]
 pub(crate) enum PrefixedArg {
     /// `?debug_struct`
     Debug(Expr),
     /// `%display_struct`
     Display(Expr),
-    /// `^serialize_struct`
+    /// `serialize_struct` (no prefix by default)
     Serialize(Expr),
-    /// `some_struct`
-    Normal(Expr),
 }
 
 impl PrefixedArg {
     /// The captured expression for this argument
     pub(crate) fn expr(&self) -> &Expr {
         match self {
-            Self::Debug(i) | Self::Display(i) | Self::Serialize(i) | Self::Normal(i) => i,
+            Self::Debug(i) | Self::Display(i) | Self::Serialize(i) => i,
         }
     }
 }
@@ -60,12 +58,8 @@ impl Parse for PrefixedArg {
             input.parse::<Token![%]>()?;
 
             Ok(PrefixedArg::Display(input.parse()?))
-        } else if input.peek(Token![^]) {
-            input.parse::<Token![^]>()?;
-
-            Ok(PrefixedArg::Serialize(input.parse()?))
         } else {
-            Ok(PrefixedArg::Normal(input.parse()?))
+            Ok(PrefixedArg::Serialize(input.parse()?))
         }
     }
 }
@@ -74,7 +68,7 @@ impl FormatArg for PrefixedArg {
     fn formatter(&self) -> &'static str {
         match self {
             Self::Debug(_) => "{:?}",
-            Self::Display(_) | Self::Serialize(_) | Self::Normal(_) => "{}",
+            Self::Display(_) | Self::Serialize(_) => "{}",
         }
     }
 }

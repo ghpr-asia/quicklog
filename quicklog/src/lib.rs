@@ -96,7 +96,7 @@
 //! fn main() {
 //!     init!();
 //!     let s = SomeStruct { num: 1_000_000 };
-//!     info!(^s, "some struct:");
+//!     info!(s, "some struct:");
 //! }
 //! ```
 //!
@@ -131,8 +131,8 @@
 //! # fn main() {
 //! # init!();
 //! # let value = 10;
-//! info!(question.answer = ?value, question.tricky=true, question.val= value, "some questions:");
-//! // output: "some questions: question.tricky=true question.val=10 question.answer=10"
+//! info!(question.answer = ?value, question.tricky = "no", question.val = value, "some questions:");
+//! // output: "some questions: question.tricky="no" question.val=10 question.answer=10"
 //! # }
 //! ```
 //!

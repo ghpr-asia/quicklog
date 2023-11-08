@@ -70,6 +70,22 @@ pub(crate) struct Something {
     pub(crate) some_str: &'static str,
 }
 
+impl Serialize for Something {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+        self.some_str.encode(write_buf)
+    }
+
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        let (output, rest) = <&str as Serialize>::decode(read_buf);
+
+        (format!("Something {{ some_str: {} }}", output), rest)
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        self.some_str.buffer_size_required()
+    }
+}
+
 impl std::fmt::Display for Something {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Something display: {}", self.some_str)

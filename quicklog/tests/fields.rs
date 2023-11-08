@@ -33,12 +33,11 @@ fn main() {
     );
 
     assert_message_equal!(
-        info!(some_struct.field1.innerfield.inner = &s1, "pass by ref"),
-        format!("pass by ref some_struct.field1.innerfield.inner={}", &s1)
-    );
-    assert_message_equal!(
-        info!(some.inner.field = s3, "pass by move"),
-        format!("pass by move some.inner.field={}", s3_clone)
+        info!(some.inner.field = s3, "inner field name with serialize"),
+        format!(
+            "inner field name with serialize some.inner.field=Something {{ some_str: {} }}",
+            s3_clone.some_str,
+        )
     );
     assert_message_equal!(
             info!(
@@ -53,9 +52,9 @@ fn main() {
         info!(
             reuse.debug = ?s1,
             some_inner_field.some.field.included = "hello world",
-            able.to.reuse.s2.borrow = &s2,
-            "reuse debug, nested field, able to reuse after pass by ref:"
+            able.to.reuse.s2.borrow = s2,
+            "reuse debug, nested field, able to reuse after serialize:"
         ),
-        format!("reuse debug, nested field, able to reuse after pass by ref: reuse.debug={:?} some_inner_field.some.field.included=hello world able.to.reuse.s2.borrow={}", s1, &s2)
+        format!("reuse debug, nested field, able to reuse after serialize: reuse.debug={:?} some_inner_field.some.field.included=hello world able.to.reuse.s2.borrow=Something {{ some_str: {} }}", s1, s2.some_str)
     );
 }

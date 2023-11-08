@@ -136,10 +136,10 @@ fn main() {
 
     // Prints "Struct deriving Serialize: derive=SerializeStruct { a: 1, b: -2, c: 3
     // }"
-    info!(^derive, "Struct deriving Serialize:");
+    info!(derive, "Struct deriving Serialize:");
     // Prints "Struct implementing custom Serialize: manual=ManualSerializeStruct {
     // a: Hello world 1, b: 50, c: Hello world 2 }"
-    info!(^manual, "Struct implementing custom Serialize:");
+    info!(manual, "Struct implementing custom Serialize:");
 
     flush!();
 }

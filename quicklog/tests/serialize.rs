@@ -15,10 +15,10 @@ fn main() {
         some: "The quick brown fox jumps over the lazy dog",
     };
 
-    assert_message_equal!(info!(^s), "s=Hello");
-    assert_message_equal!(info!(^s, "with fmt string:"), "with fmt string: s=Hello");
+    assert_message_equal!(info!(s), "s=Hello");
+    assert_message_equal!(info!(s, "with fmt string:"), "with fmt string: s=Hello");
     assert_message_equal!(
-        info!(^s, ^bs, "s, bs:"),
+        info!(s, bs, "s, bs:"),
         format!(
             "s, bs: s=Hello bs=vec: {:?}, str: {}",
             vec![1; 100],

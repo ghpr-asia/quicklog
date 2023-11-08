@@ -38,27 +38,21 @@ pub(crate) fn expand(level: Level, input: TokenStream) -> TokenStream {
 
 /// Main function for expanding the components parsed from the macro call
 pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
-    let (args_traits_check, prefixed_args_write) = {
-        let mut args_traits_check = Vec::new();
-        let mut args_write = Vec::new();
-
-        for prefixed_field in &args.prefixed_fields {
+    let prefixed_args_write: Vec<_> = args
+        .prefixed_fields
+        .iter()
+        .map(|prefixed_field| {
             let formatter = prefixed_field.arg.formatter();
             match &prefixed_field.arg {
                 PrefixedArg::Serialize(a) => {
-                    args_traits_check.push(quote! { serialize_check(&#a); });
-                    args_write.push(quote! { cursor.write_serialize(&#a)?; });
+                    quote! { cursor.write_serialize(&#a)?; }
                 }
-                PrefixedArg::Debug(a) | PrefixedArg::Display(a) | PrefixedArg::Normal(a) => {
-                    args_write.push(
-                        quote! { cursor.write_fmt(fmt_buffer, format_args!(#formatter, &#a))?; },
-                    );
+                PrefixedArg::Debug(a) | PrefixedArg::Display(a) => {
+                    quote! { cursor.write_fmt(fmt_buffer, format_args!(#formatter, &#a))?; }
                 }
             }
-        }
-
-        (args_traits_check, args_write)
-    };
+        })
+        .collect();
 
     let original_fmt_str = args
         .format_string
@@ -109,8 +103,6 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
         if quicklog::is_level_enabled!(#level) {
             use quicklog::{serialize::Serialize};
 
-            const fn serialize_check<T: Serialize>(_: &T) {}
-
             static META: quicklog::queue::Metadata = quicklog::queue::Metadata {
                 module_path: module_path!(),
                 file: file!(),
@@ -118,8 +110,6 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
                 level: #level,
                 format_str: #fmt_str
             };
-
-            #(#args_traits_check)*
 
             (|| {
                 let mut logger = quicklog::logger();
