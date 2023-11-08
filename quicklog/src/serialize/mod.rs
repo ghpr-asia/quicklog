@@ -48,6 +48,7 @@ pub mod buffer;
 /// ```
 pub trait Serialize {
     /// Describes how to encode the implementing type into a byte buffer.
+    /// Assumes that `write_buf` has enough capacity to encode argument in.
     ///
     /// Returns a [Store](crate::serialize::Store) and the remainder of `write_buf`
     /// passed in that was not written to.
@@ -71,8 +72,8 @@ pub const SIZE_LENGTH: usize = std::mem::size_of::<usize>();
 /// representation.
 #[derive(Clone)]
 pub struct Store<'buf> {
-    decode_fn: DecodeFn,
-    buffer: &'buf [u8],
+    pub(crate) decode_fn: DecodeFn,
+    pub(crate) buffer: &'buf [u8],
 }
 
 impl Store<'_> {

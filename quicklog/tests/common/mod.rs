@@ -3,8 +3,9 @@
 
 use chrono::{DateTime, Utc};
 use quicklog::{
+    queue::Metadata,
     serialize::{Serialize, Store},
-    LogRecord, PatternFormatter,
+    PatternFormatter,
 };
 use quicklog_flush::Flush;
 
@@ -33,11 +34,13 @@ impl TestFormatter {
 }
 
 impl PatternFormatter for TestFormatter {
-    fn custom_format(&mut self, time: DateTime<Utc>, log_record: LogRecord) -> String {
-        format!(
-            "[{:?}][{}]\t{}\n",
-            time, log_record.level, log_record.log_line
-        )
+    fn custom_format(
+        &mut self,
+        time: DateTime<Utc>,
+        metadata: &Metadata,
+        log_record: &str,
+    ) -> String {
+        format!("[{:?}][{}]\t{}\n", time, metadata.level, log_record)
     }
 }
 
@@ -145,9 +148,9 @@ impl Serialize for BigStruct {
         let (mut _head, mut tail) = buf.split_at(0);
         let mut arr = [0; 100];
         let elm_size = std::mem::size_of::<i32>();
-        for i in 0..100 {
+        for i in &mut arr {
             (_head, tail) = tail.split_at(elm_size);
-            arr[i] = i32::from_le_bytes(_head.try_into().unwrap());
+            *i = i32::from_le_bytes(_head.try_into().unwrap());
         }
         let (s, rest) = <&str as Serialize>::decode(tail);
 

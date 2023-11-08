@@ -18,7 +18,7 @@ pub(crate) type PrefixedFields = Punctuated<NamedField<PrefixedArg>, Token![,]>;
 /// Comma-separated sequence of `Expr`-based named fields
 /// e.g. `my.name = debug_struct`, `display_struct`
 /// Similar to `PrefixedFields`, but doesn't allow for prefixes for the
-/// main field argument
+/// main field argument, since those are not valid Rust expressions
 pub(crate) type ExprFields = Punctuated<NamedField<Expr>, Token![,]>;
 
 /// Formatting argument with an optional prefix
@@ -91,16 +91,16 @@ pub(crate) struct NamedField<T: Parse> {
 }
 
 impl<T: Parse + FormatArg + ToTokens> NamedField<T> {
-    /// Helper method for describing how to form this `NamedField` as part
-    /// of a format string
-    pub(crate) fn formatter(&self) -> String {
-        let name = if let Some(n) = &self.name {
-            n.into_token_stream().to_string()
+    /// Returns identifier tokens for the name describing this field
+    /// If the original form was parsed from something like "my_name = foo",
+    /// then identifier is `my_name`. Otherwise, the name is taken from the
+    /// expression, which would just be `foo` in this case.
+    pub(crate) fn name(&self) -> TokenStream2 {
+        if let Some(n) = &self.name {
+            n.into_token_stream()
         } else {
-            (&self.arg).into_token_stream().to_string()
-        };
-
-        name + "=" + self.arg.formatter()
+            (&self.arg).into_token_stream()
+        }
     }
 }
 
@@ -160,6 +160,10 @@ impl<T: Parse + ToTokens> ToTokens for NamedField<T> {
 /// Consider an example macro call:
 /// ```ignore
 /// info!(a = ?debug_struct, %display_struct, "Hello World {some_data}", some_data = "me!") ;
+///       ----------------------------------  -------------------------  -----------------
+///       |                                   |                          |
+///       |                                   |                          |
+///       Prefixed field(s)                   Format string              Format argument(s)
 /// ```
 /// We split arguments passed to the macro call into 3 components. They are:
 /// 1. Prefixed fields
@@ -167,9 +171,12 @@ impl<T: Parse + ToTokens> ToTokens for NamedField<T> {
 ///     appended to the end of the format string.
 /// 2. Format string
 ///   - The format string, the same as that used in `format!`
-/// 3. Expression fields
+/// 3. Format arguments
 ///   - These are the expressions that will be substituted into the format
 ///     string, similar to how `format!` works.
+///
+/// Having these separate components in mind can be useful for understanding
+/// how the logging macros expand out.
 pub(crate) struct Args {
     /// `?debug_struct`, `%display_struct`
     pub(crate) prefixed_fields: PrefixedFields,
@@ -226,19 +233,4 @@ impl Parse for Args {
             })
         }
     }
-}
-
-/// Replaces all expression arguments with a new set of expressions.
-/// e.g. for the expression field `a = &my_struct` and the new expression `x`,
-/// the field gets transformed to `a = &my_struct` -> `a = x`
-pub(crate) fn replace_fields_expr(
-    fields: &mut ExprFields,
-    to_replace: impl IntoIterator<Item = Expr>,
-) {
-    fields
-        .iter_mut()
-        .zip(to_replace)
-        .for_each(|(field, replacement)| {
-            field.arg = replacement;
-        });
 }

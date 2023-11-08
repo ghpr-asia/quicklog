@@ -1,9 +1,10 @@
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
-use syn::{parse_macro_input, parse_quote, Ident};
+use proc_macro2::TokenStream as TokenStream2;
+use quote::quote;
+use syn::parse_macro_input;
 
-use crate::args::{replace_fields_expr, Args, PrefixedArg};
+use crate::args::{Args, PrefixedArg};
+use crate::format_arg::FormatArg;
 use crate::Level;
 
 /// Parses token stream into the different components of `Args` and
@@ -13,114 +14,118 @@ pub(crate) fn expand(level: Level, input: TokenStream) -> TokenStream {
 }
 
 /// Main function for expanding the components parsed from the macro call
-pub(crate) fn expand_parsed(level: Level, mut args: Args) -> TokenStream2 {
-    let args_traits_check: Vec<_> = args
-        .prefixed_fields
-        .iter()
-        .filter_map(|arg| match &arg.arg {
-            PrefixedArg::Debug(a) => Some(quote! { debug_check(&#a); }),
-            PrefixedArg::Display(a) => Some(quote! { display_check(&#a); }),
-            PrefixedArg::Serialize(a) => Some(quote! { serialize_check(&#a); }),
-            PrefixedArg::Normal(_) => None,
-        })
-        .collect();
+pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
+    let (args_traits_check, prefixed_args_write) = {
+        let mut args_traits_check = Vec::new();
+        let mut args_write = Vec::new();
 
-    let (new_idents_declaration, fmt_arg_idents, prefixed_field_idents) =
-        convert_args_to_idents(&args);
+        for prefixed_field in &args.prefixed_fields {
+            let formatter = prefixed_field.arg.formatter();
+            match &prefixed_field.arg {
+                PrefixedArg::Serialize(a) => {
+                    args_traits_check.push(quote! { serialize_check(&#a); });
+                    args_write.push(quote! { cursor.write_serialize(&#a)?; });
+                }
+                PrefixedArg::Debug(a) | PrefixedArg::Display(a) | PrefixedArg::Normal(a) => {
+                    args_write.push(
+                        quote! { cursor.write_fmt(fmt_buffer, format_args!(#formatter, &#a))?; },
+                    );
+                }
+            }
+        }
 
-    let mut fmt_args = args.formatting_args;
-    replace_fields_expr(
-        &mut fmt_args,
-        fmt_arg_idents.into_iter().map(|ident| parse_quote!(#ident)),
-    );
+        (args_traits_check, args_write)
+    };
 
-    let fmt_str = args
-        .format_string
-        .take()
-        .map(|s| s.value())
-        .unwrap_or_else(String::new);
-    // Insert extra spacing between format string and format fields for prefixed
-    // fields if prefixed fields exist
-    // e.g. info!(?debug_struct, "hello world {}", a) -> format!("hello world {}
-    // debug_struct={:?}", a, debug_struct)
-    let mut special_fmt_str = if fmt_str.is_empty() { "" } else { " " }.to_string();
-    for field in args.prefixed_fields.iter() {
-        special_fmt_str.push_str(field.formatter().as_str());
-        special_fmt_str.push(' ');
+    let has_fmt_str = args.format_string.is_some();
+    let has_fmt_args = !args.formatting_args.is_empty();
+    let has_fmt = has_fmt_str || has_fmt_args;
+
+    // TODO: smarter format string parsing
+    // Right now this calls `write_fmt` even if the format string is simply
+    // "hello world", without format arguments. This is to capture any implicit
+    // named parameters, e.g. "hello world {a}"
+    // We can possibly save on avoiding the `write_fmt` if we parse the fmt
+    // string and check that there are no named captures.
+    //
+    // Entire format string + format args are wrapped into one argument
+    let (num_args, fmt_args_write, mut fmt_str) = if has_fmt {
+        let original_fmt_str = args
+            .format_string
+            .as_ref()
+            .map(|s| s.value())
+            .unwrap_or_else(|| "{}".to_string());
+        let fmt_args = if has_fmt_args {
+            let args = &args.formatting_args;
+            quote! { , #args }
+        } else {
+            quote! {}
+        };
+
+        (
+            args.prefixed_fields.len() + 1,
+            quote! { cursor.write_fmt(fmt_buffer, format_args!(#original_fmt_str #fmt_args))?; },
+            "{}".to_string(),
+        )
+    } else {
+        (args.prefixed_fields.len(), quote! {}, "".to_string())
+    };
+
+    if !fmt_str.is_empty() && !args.prefixed_fields.is_empty() {
+        fmt_str.push(' ');
     }
-    let special_fmt_str = special_fmt_str.trim_end();
+    let num_prefixed_fields = args.prefixed_fields.len();
+    for (idx, field) in args.prefixed_fields.iter().enumerate() {
+        let fmt_name = field.name().to_string() + "={}";
+        fmt_str.push_str(fmt_name.as_str());
+
+        if idx < num_prefixed_fields - 1 {
+            fmt_str.push(' ');
+        }
+    }
 
     quote! {{
         if quicklog::is_level_enabled!(#level) {
-            use quicklog::{Log, make_container, serialize::Serialize};
+            use quicklog::{serialize::Serialize};
 
-            const fn debug_check<T: ::std::fmt::Debug + Clone>(_: &T) {}
-            const fn display_check<T: ::std::fmt::Display + Clone>(_: &T) {}
             const fn serialize_check<T: Serialize>(_: &T) {}
 
-            #(#args_traits_check)*
-
-            #new_idents_declaration
-
-            let log_record = quicklog::LogRecord {
-                level: #level,
+            static META: quicklog::queue::Metadata = quicklog::queue::Metadata {
                 module_path: module_path!(),
                 file: file!(),
                 line: line!(),
-                log_line: make_container!(quicklog::lazy_format::make_lazy_format!(|f| {
-                    write!(f, #fmt_str, #fmt_args)?;
-                    write!(f, #special_fmt_str, #(#prefixed_field_idents),*)
-                }))
+                level: #level,
+                format_str: #fmt_str
             };
 
-            quicklog::logger().log(log_record)
+            #(#args_traits_check)*
+
+            (|| {
+                let mut logger = quicklog::logger();
+                let now = logger.now();
+                let (mut chunk, fmt_buffer) = logger.prepare_write();
+                let (first, second) = chunk.as_mut_slices();
+                let mut cursor = quicklog::queue::CursorMut::new(first, second);
+
+                let header = quicklog::queue::LogHeader {
+                    metadata: &META,
+                    instant: now,
+                    num_args: #num_args,
+                };
+                cursor.write(&header)?;
+
+                #fmt_args_write
+
+                #(#prefixed_args_write)*
+
+                let commit_size = cursor.finish();
+                quicklog::Quicklog::finish_write(chunk, commit_size);
+
+                Ok::<(), quicklog::queue::WriteError>(())
+            })()
         } else {
             Ok(())
         }
         .unwrap_or(())
     }}
-}
-
-/// Generates new identifier tokens and their declarations for every special
-/// and formatting argument
-fn convert_args_to_idents(args: &Args) -> (TokenStream2, Vec<Ident>, Vec<Ident>) {
-    let mut args_to_own: Vec<TokenStream2> = Vec::new();
-    let mut arg_count = 0;
-
-    let mut new_ident = || {
-        arg_count += 1;
-        Ident::new("x".repeat(arg_count).as_str(), Span::call_site())
-    };
-
-    let mut fmt_arg_idents = Vec::with_capacity(args.formatting_args.len());
-    for fmt_arg in args.formatting_args.iter() {
-        args_to_own.push(fmt_arg.arg.to_token_stream());
-        fmt_arg_idents.push(new_ident());
-    }
-
-    let mut prefixed_field_idents = Vec::with_capacity(args.prefixed_fields.len());
-    for field in args.prefixed_fields.iter() {
-        match &field.arg {
-            PrefixedArg::Serialize(i) => args_to_own.push(quote! {
-                quicklog::make_store!(#i)
-            }),
-            _ => args_to_own.push(field.arg.to_token_stream()),
-        }
-        prefixed_field_idents.push(new_ident());
-    }
-
-    let new_idents = fmt_arg_idents.iter().chain(prefixed_field_idents.iter());
-
-    // No need to declare anything if no format/special arguments passed
-    if args_to_own.is_empty() {
-        return (quote! {}, fmt_arg_idents, prefixed_field_idents);
-    }
-
-    (
-        quote! {
-            let (#(#new_idents),*) = (#( (#args_to_own).to_owned() ),*);
-        },
-        fmt_arg_idents,
-        prefixed_field_idents,
-    )
 }

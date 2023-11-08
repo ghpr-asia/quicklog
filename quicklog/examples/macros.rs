@@ -1,7 +1,8 @@
 use quicklog::{
-    debug, error, info, init,
+    debug, error, flush, info, init,
+    queue::Metadata,
     serialize::{Serialize, Store},
-    trace, try_flush, warn, with_flush, with_formatter, LogRecord, PatternFormatter,
+    trace, warn, with_flush, with_formatter, PatternFormatter,
 };
 use quicklog_flush::stdout_flusher::StdoutFlusher;
 
@@ -36,11 +37,12 @@ impl PatternFormatter for CustomFormatter {
     fn custom_format(
         &mut self,
         time: chrono::DateTime<chrono::Utc>,
-        log_record: LogRecord,
+        metadata: &Metadata,
+        log_record: &str,
     ) -> String {
         format!(
             "[{:?}][{}][{}][{}]{}\n",
-            time, log_record.file, log_record.line, log_record.level, log_record.log_line,
+            time, metadata.file, metadata.line, metadata.level, log_record,
         )
     }
 }
@@ -102,6 +104,5 @@ fn main() {
     info!(debug_impl = ?s_0, "My struct {a}", a = s_0);
     info!(debug_impl = ?s_0, "My struct {s_0:?}");
 
-    // Each call to `try_flush` only outputs result from a single logging call
-    while let Ok(()) = try_flush!() {}
+    flush!();
 }

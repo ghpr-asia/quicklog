@@ -185,12 +185,13 @@
 //! ### Example
 //!
 //! ```
-//! # use quicklog::{init, flush, with_flush};
+//! # use quicklog::{info, init, flush, with_flush};
 //! # use quicklog_flush::stdout_flusher::StdoutFlusher;
 //! fn main() {
 //!     init!();
 //!
 //!     with_flush!(StdoutFlusher);
+//!     info!("hello world!");
 //!
 //!     // uses the StdoutFlusher passed in for flushing
 //!     flush!();
@@ -201,12 +202,15 @@
 //! [`StdoutFlusher`]: quicklog_flush::stdout_flusher::StdoutFlusher
 //! [`FileFlusher`]: quicklog_flush::file_flusher::FileFlusher
 
-use heapless::spsc::Queue;
-use level::Level;
+use dyn_fmt::AsStrFormatExt;
 use once_cell::unsync::Lazy;
 use quanta::Instant;
+use queue::{
+    receiver::Receiver, sender::Sender, CursorRef, FlushError, FlushResult, LogArgType, Metadata,
+    ReadError,
+};
+use rtrb::{chunks::WriteChunkUninit, RingBuffer};
 use serialize::buffer::ByteBuffer;
-use std::{cell::OnceCell, fmt::Display};
 
 pub use ::lazy_format;
 pub use std::{file, line, module_path};
@@ -226,44 +230,18 @@ include!("constants.rs");
 /// `constants.rs` is generated from `build.rs`, should not be modified manually
 pub mod constants;
 
+pub mod queue;
+mod utils;
+
 pub use quicklog_macros::{debug, error, info, trace, warn, Serialize};
 
-/// Internal API
-///
-/// timed log item being stored into logging queue
-#[doc(hidden)]
-pub type TimedLogRecord = (Instant, LogRecord);
+use crate::{queue::LogHeader, serialize::DecodeFn};
 
 /// Logger initialized to Quicklog
 #[doc(hidden)]
 static mut LOGGER: Lazy<Quicklog> = Lazy::new(Quicklog::default);
 
-/// Producer side of queue
-pub type Sender = heapless::spsc::Producer<'static, TimedLogRecord, MAX_LOGGER_CAPACITY>;
-/// Result from pushing onto queue
-pub type SendResult = Result<(), TimedLogRecord>;
-/// Consumer side of queue
-pub type Receiver = heapless::spsc::Consumer<'static, TimedLogRecord, MAX_LOGGER_CAPACITY>;
-/// Result from trying to pop from logging queue
-pub type RecvResult = Result<(), FlushError>;
-
-/// Log is the base trait that Quicklog will implement.
-/// Flushing and formatting is deferred while logging.
-pub trait Log {
-    /// Dequeues a single log record from logging queue and passes it to Flusher
-    fn flush_one(&mut self) -> RecvResult;
-    /// Enqueues a single log record onto logging queue
-    fn log(&mut self, record: LogRecord) -> SendResult;
-}
-
-/// Errors that can be presented when flushing
-#[derive(Debug)]
-pub enum FlushError {
-    /// Queue is empty
-    Empty,
-}
-
-///  ha**Internal API**
+/// **Internal API**
 ///
 /// Returns a mut reference to the globally static logger [`LOGGER`]
 #[doc(hidden)]
@@ -271,21 +249,13 @@ pub fn logger() -> &'static mut Quicklog {
     unsafe { &mut LOGGER }
 }
 
-pub struct LogRecord {
-    /// Level
-    pub level: Level,
-    /// Module path
-    pub module_path: &'static str,
-    /// File
-    pub file: &'static str,
-    /// Line
-    pub line: u32,
-    /// Log line captured by using LazyFormat which implements Display trait.
-    pub log_line: Box<dyn Display>,
-}
-
 pub trait PatternFormatter {
-    fn custom_format(&mut self, time: DateTime<Utc>, log_record: LogRecord) -> String;
+    fn custom_format(
+        &mut self,
+        time: DateTime<Utc>,
+        metadata: &Metadata,
+        log_record: &str,
+    ) -> String;
 }
 
 pub struct QuickLogFormatter;
@@ -297,22 +267,30 @@ impl QuickLogFormatter {
 }
 
 impl PatternFormatter for QuickLogFormatter {
-    fn custom_format(&mut self, time: DateTime<Utc>, object: LogRecord) -> String {
-        format!("[{:?}]{}\n", time, object.log_line)
+    fn custom_format(&mut self, time: DateTime<Utc>, _: &Metadata, log_record: &str) -> String {
+        format!("[{:?}]{}\n", time, log_record)
     }
 }
 
-/// Quicklog implements the Log trait, to provide logging
+/// Main logging handler
 pub struct Quicklog {
     flusher: Box<dyn Flush>,
     clock: Box<dyn Clock>,
     formatter: Box<dyn PatternFormatter>,
-    sender: OnceCell<Sender>,
-    receiver: OnceCell<Receiver>,
+    sender: Sender,
+    receiver: Receiver,
+    fmt_buffer: String,
     byte_buffer: ByteBuffer,
 }
 
 impl Quicklog {
+    /// Eagerly initializes the global [`Quicklog`] logger.
+    /// Can be called through [`init!`] macro
+    pub fn init() {
+        // Referencing forces evaluation of Lazy
+        _ = logger();
+    }
+
     /// Sets which flusher to be used, used in [`with_flush!`]
     #[doc(hidden)]
     pub fn use_flush(&mut self, flush: Box<dyn Flush>) {
@@ -329,14 +307,10 @@ impl Quicklog {
         self.clock = clock
     }
 
-    /// Initializes channel inside of quicklog, can be called
-    /// through [`init!`] macro
-    pub fn init(&mut self) {
-        static mut QUEUE: Queue<TimedLogRecord, MAX_LOGGER_CAPACITY> = Queue::new();
-        let (sender, receiver): (Sender, Receiver) = unsafe { QUEUE.split() };
-
-        self.sender.set(sender).ok();
-        self.receiver.set(receiver).ok();
+    /// Retrieves current [Instant](quanta::Instant).
+    #[inline(always)]
+    pub fn now(&self) -> Instant {
+        self.clock.get_instant()
     }
 
     /// Internal API to get a chunk from buffer
@@ -352,52 +326,110 @@ impl Quicklog {
     pub fn get_chunk_as_mut(&mut self, chunk_size: usize) -> &mut [u8] {
         self.byte_buffer.get_chunk_as_mut(chunk_size)
     }
+
+    /// Flushes all arguments from the queue.
+    ///
+    /// Iteratively reads through the queue to extract encoded logging
+    /// arguments. This happens by:
+    /// 1. Checking for a [`LogHeader`], which provides information about
+    ///    the number of arguments to expect.
+    /// 2. Parsing header-argument pairs.
+    ///
+    /// In the event of parsing failure, the flushing is terminated without
+    /// committing.
+    pub fn flush(&mut self) -> FlushResult {
+        let chunk = self.receiver.read_chunk()?;
+        let (head, tail) = chunk.as_slices();
+        let mut cursor = CursorRef::new(head, tail);
+
+        if cursor.is_empty() {
+            return Err(FlushError::Empty);
+        }
+
+        loop {
+            // Parse header for entire log message
+            let Ok(log_header) = cursor.read::<LogHeader>() else {
+                break;
+            };
+
+            let num_args = log_header.num_args;
+            let mut decoded_args = Vec::with_capacity(num_args);
+            while decoded_args.len() < num_args {
+                let Ok(arg_type) = cursor.read::<LogArgType>() else {
+                    break;
+                };
+
+                let decoded = match arg_type {
+                    LogArgType::Fmt => {
+                        // Remaining: size of argument
+                        let size_of_arg = cursor.read::<usize>()?;
+                        let arg_chunk = cursor.read_bytes(size_of_arg)?;
+
+                        // Assuming that we wrote this using in-built std::fmt, so should be valid string
+                        std::str::from_utf8(arg_chunk)
+                            .map_err(|_| ReadError::UnexpectedValue)?
+                            .to_string()
+                    }
+                    LogArgType::Serialize => {
+                        // Remaining: size of argument, DecodeFn
+                        let size_of_arg = cursor.read::<usize>()?;
+                        let decode_fn = cursor.read::<DecodeFn>()?;
+                        let arg_chunk = cursor.read_bytes(size_of_arg)?;
+
+                        let (decoded, _) = decode_fn(arg_chunk);
+                        decoded
+                    }
+                };
+                decoded_args.push(decoded);
+            }
+
+            if decoded_args.len() != num_args {
+                continue;
+            }
+
+            let time = self
+                .clock
+                .compute_system_time_from_instant(&log_header.instant)
+                .expect("Unable to get time from Instant");
+            let formatted = log_header.metadata.format_str.format(&decoded_args);
+            let log_line = self
+                .formatter
+                .custom_format(time, log_header.metadata, &formatted);
+            self.flusher.flush_one(log_line);
+        }
+
+        chunk.commit_all();
+
+        Ok(())
+    }
+
+    /// Returns chunks/buffers for writing to
+    pub fn prepare_write(&mut self) -> (WriteChunkUninit<'_, u8>, &mut String) {
+        let chunk = self.sender.write_chunk().expect("queue full");
+        let buf = &mut self.fmt_buffer;
+
+        (chunk, buf)
+    }
+
+    /// Consumes a previously obtained write chunk and commits the written
+    /// slots, making them available for reading
+    pub fn finish_write(chunk: WriteChunkUninit<'_, u8>, committed: usize) {
+        unsafe { chunk.commit(committed) }
+    }
 }
 
 impl Default for Quicklog {
     fn default() -> Self {
+        let (sender, receiver) = RingBuffer::<u8>::new(MAX_LOGGER_CAPACITY);
+
         Quicklog {
             flusher: Box::new(FileFlusher::new("logs/quicklog.log")),
             clock: Box::new(QuantaClock::new()),
             formatter: Box::new(QuickLogFormatter::new()),
-            sender: OnceCell::new(),
-            receiver: OnceCell::new(),
+            sender: Sender(sender),
+            receiver: Receiver(receiver),
+            fmt_buffer: String::with_capacity(2048),
             byte_buffer: ByteBuffer::new(),
-        }
-    }
-}
-
-impl Log for Quicklog {
-    fn log(&mut self, record: LogRecord) -> SendResult {
-        match
-            self.sender
-                .get_mut()
-                .expect("Sender is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
-                .enqueue((self.clock.get_instant(), record))
-        {
-            Ok(_) => Ok(()),
-            Err(err) => Err(err),
-        }
-    }
-
-    fn flush_one(&mut self) -> RecvResult {
-        match
-            self.receiver
-                    .get_mut()
-                    .expect("RECEIVER is not initialized, `Quicklog::init()` needs to be called at the entry point of your application")
-                    .dequeue()
-        {
-            Some((time_logged, record)) => {
-                let log_line = self.formatter.custom_format(
-                    self.clock
-                        .compute_system_time_from_instant(time_logged)
-                        .expect("Unable to get time from instant"),
-                    record,
-                );
-                self.flusher.flush_one(log_line);
-                Ok(())
-            }
-            None => Err(FlushError::Empty),
         }
     }
 }

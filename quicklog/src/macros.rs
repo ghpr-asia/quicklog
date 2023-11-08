@@ -35,7 +35,7 @@ macro_rules! with_flush_into_file {
 #[macro_export]
 macro_rules! init {
     () => {
-        $crate::logger().init();
+        $crate::Quicklog::init();
     };
 }
 
@@ -83,26 +83,13 @@ macro_rules! make_store {
     }};
 }
 
-/// Allows flushing onto an implementor of [`Flush`], which can be modified with
-/// [`with_flush!`] macro and returns [`RecvResult`]
-///
-/// [`Flush`]: quicklog_flush::Flush
-/// [`RecvResult`]: crate::RecvResult
-#[macro_export]
-macro_rules! try_flush {
-    () => {{
-        use $crate::Log;
-        $crate::logger().flush_one()
-    }};
-}
-
-/// Allows flushing onto an implementor of [`Flush`], which can be modified with
-/// [`with_flush!`] macro and unwraps and ignores errors from [`try_flush`]
+/// Flushes all log records onto an implementor of [`Flush`], which can be
+/// modified with [`with_flush!`] macro.
 ///
 /// [`Flush`]: `quicklog_flush::Flush`
 #[macro_export]
 macro_rules! flush {
     () => {
-        $crate::try_flush!().unwrap_or(());
+        $crate::logger().flush().unwrap();
     };
 }
