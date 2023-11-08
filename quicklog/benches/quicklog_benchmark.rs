@@ -189,7 +189,7 @@ fn bench_logger_nested(b: &mut Bencher) {
         nested.vec.push(bs)
     }
     with_flush!(NoopFlusher);
-    loop_with_cleanup!(b, black_box(quicklog::info!(^nested, "Some data: ")));
+    loop_with_cleanup!(b, black_box(quicklog::info!(^nested, "Some data:")));
 }
 
 fn bench_loggers(c: &mut Criterion) {

@@ -7,6 +7,29 @@ use crate::args::{Args, PrefixedArg};
 use crate::format_arg::FormatArg;
 use crate::Level;
 
+/// Checks if the passed format string has any format specifiers, e.g. {}, {:?},
+/// {a}.
+fn has_fmt_specifiers(fmt_str: &str) -> bool {
+    let mut chars = fmt_str.chars();
+    while let Some(c) = chars.next() {
+        if c != '{' {
+            continue;
+        }
+
+        if chars.as_str().starts_with('{') {
+            // Escaped '{{'
+            chars.next();
+            continue;
+        }
+
+        // Might have unmatched open bracket, so explicitly check for presence
+        // of close bracket
+        return chars.as_str().find('}').is_some();
+    }
+
+    false
+}
+
 /// Parses token stream into the different components of `Args` and
 /// generates required tokens from the inputs
 pub(crate) fn expand(level: Level, input: TokenStream) -> TokenStream {
@@ -37,24 +60,19 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
         (args_traits_check, args_write)
     };
 
-    let has_fmt_str = args.format_string.is_some();
+    let original_fmt_str = args
+        .format_string
+        .as_ref()
+        .map(|s| s.value())
+        .unwrap_or_else(String::new);
     let has_fmt_args = !args.formatting_args.is_empty();
-    let has_fmt = has_fmt_str || has_fmt_args;
+    let need_write_fmt_str = has_fmt_args || has_fmt_specifiers(original_fmt_str.as_str());
 
-    // TODO: smarter format string parsing
-    // Right now this calls `write_fmt` even if the format string is simply
-    // "hello world", without format arguments. This is to capture any implicit
-    // named parameters, e.g. "hello world {a}"
-    // We can possibly save on avoiding the `write_fmt` if we parse the fmt
-    // string and check that there are no named captures.
-    //
-    // Entire format string + format args are wrapped into one argument
-    let (num_args, fmt_args_write, mut fmt_str) = if has_fmt {
-        let original_fmt_str = args
-            .format_string
-            .as_ref()
-            .map(|s| s.value())
-            .unwrap_or_else(|| "{}".to_string());
+    // If there are format arguments or the format string has format specifiers
+    // (might be named captures), then we need to format it. Otherwise, we
+    // can just pass the format string along with `Metadata` and avoid one
+    // formatting operation.
+    let (num_args, fmt_args_write, mut fmt_str) = if need_write_fmt_str {
         let fmt_args = if has_fmt_args {
             let args = &args.formatting_args;
             quote! { , #args }
@@ -62,15 +80,18 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
             quote! {}
         };
 
+        // Entire format string + format args are wrapped into one argument
         (
             args.prefixed_fields.len() + 1,
             quote! { cursor.write_fmt(fmt_buffer, format_args!(#original_fmt_str #fmt_args))?; },
             "{}".to_string(),
         )
     } else {
-        (args.prefixed_fields.len(), quote! {}, "".to_string())
+        (args.prefixed_fields.len(), quote! {}, original_fmt_str)
     };
 
+    // Construct format string for prefixed fields and append to original
+    // format string
     if !fmt_str.is_empty() && !args.prefixed_fields.is_empty() {
         fmt_str.push(' ');
     }
