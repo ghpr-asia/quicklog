@@ -110,9 +110,9 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
             use quicklog::{serialize::Serialize};
 
             static META: quicklog::queue::Metadata = quicklog::queue::Metadata {
-                module_path: module_path!(),
-                file: file!(),
-                line: line!(),
+                module_path: std::module_path!(),
+                file: std::file!(),
+                line: std::line!(),
                 level: #level,
                 format_str: #fmt_str
             };

@@ -2,7 +2,7 @@ use rtrb::{chunks::ReadChunk, Consumer};
 
 use super::{ReadError, ReadResult};
 
-/// Consumer side of queue
+/// Consumer side of queue.
 pub(crate) struct Receiver(pub(crate) Consumer<u8>);
 
 impl Receiver {

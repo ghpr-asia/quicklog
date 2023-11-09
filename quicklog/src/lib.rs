@@ -2,9 +2,9 @@
 //!
 //! # Overview
 //!
-//! `Quicklog` is provides a framework for logging where it allows for deferred
-//! deferred formatting and deferred I/O of logging, which should in turn provide
-//! more performant logging with low callsite latency.
+//! `Quicklog` provides a framework for logging which allows for deferred
+//! formatting and deferred I/O of logging, which should in turn provide more
+//! performant logging with low callsite latency.
 //!
 //! ## Deferred Formatting
 //!
@@ -41,17 +41,15 @@
 //!     info!("hello world! {}", "some argument");
 //!
 //!     // flush on separate thread
-//!     thread::spawn(|| {
-//!         loop {
-//!             flush!();
-//!         }
+//!     thread::spawn(|| loop {
+//!         flush!();
 //!     });
 //! }
 //! ```
 //!
 //! # Macros
 //!
-//! #### Shorthand Macros
+//! ### Shorthand Macros
 //!
 //! Quicklog allows a number of macros with 5 different levels of verbosity. They are:
 //!
@@ -60,6 +58,17 @@
 //! * [`info!`]
 //! * [`warn!`]
 //! * [`error!`]
+//!
+//! ### Example Usage
+//!
+//! ```ignore
+//! // see section on macro prefixes for more information on prefixed arguments
+//! info!(?debug_struct, %display_struct, serialize_struct, "hello world {:?}", debug_struct
+//! );
+//! ```
+//!
+//! See the repository examples for more advanced usage of the various syntax
+//! patterns supported.
 //!
 //! ## Setup Macros
 //!
@@ -202,42 +211,45 @@
 //! [`StdoutFlusher`]: quicklog_flush::stdout_flusher::StdoutFlusher
 //! [`FileFlusher`]: quicklog_flush::file_flusher::FileFlusher
 
+/// Contains logging levels and filters.
+pub mod level;
+/// Macros for logging and modifying the currently used [`Flush`] and [`Clock`]
+/// handlers, along with some utilities.
+pub mod macros;
+/// [`Serialize`] trait for serialization of various data types to aid in
+/// fast logging.
+pub mod serialize;
+
+/// Operations and types involved with writing/reading to the global buffer.
+pub mod queue;
+
+/// Constants files, generated from `build.rs`.
+mod constants;
+
+/// Utility functions.
+mod utils;
+
 use dyn_fmt::AsStrFormatExt;
 use once_cell::unsync::Lazy;
 use quanta::Instant;
 use queue::{
-    receiver::Receiver, sender::Sender, CursorRef, FlushError, FlushResult, LogArgType, Metadata,
-    ReadError,
+    receiver::Receiver, sender::Sender, CursorRef, FlushError, FlushResult, LogArgType, LogHeader,
+    Metadata, ReadError,
 };
 use rtrb::{chunks::WriteChunkUninit, RingBuffer};
-use serialize::buffer::ByteBuffer;
+use serialize::{buffer::ByteBuffer, DecodeFn};
 
 pub use ::lazy_format;
 pub use std::{file, line, module_path};
 
 use chrono::{DateTime, Utc};
+use constants::MAX_LOGGER_CAPACITY;
 use quicklog_clock::{quanta::QuantaClock, Clock};
 use quicklog_flush::{file_flusher::FileFlusher, Flush};
 
-/// contains logging levels and filters
-pub mod level;
-/// contains macros
-pub mod macros;
-/// contains trait for serialization and pre-generated impl for common types and buffer
-pub mod serialize;
-
-include!("constants.rs");
-/// `constants.rs` is generated from `build.rs`, should not be modified manually
-pub mod constants;
-
-pub mod queue;
-mod utils;
-
 pub use quicklog_macros::{debug, error, info, trace, warn, Serialize};
 
-use crate::{queue::LogHeader, serialize::DecodeFn};
-
-/// Logger initialized to Quicklog
+/// Logger initialized to [`Quicklog`].
 #[doc(hidden)]
 static mut LOGGER: Lazy<Quicklog> = Lazy::new(Quicklog::default);
 
@@ -249,7 +261,43 @@ pub fn logger() -> &'static mut Quicklog {
     unsafe { &mut LOGGER }
 }
 
+/// Specifies how to format the final log record.
 pub trait PatternFormatter {
+    /// Customize format output as desired.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chrono::{DateTime, Utc};
+    /// use quicklog::{init, queue::Metadata, with_formatter, PatternFormatter};
+    ///
+    /// struct MyFormatter {
+    ///     callsite: &'static str,
+    /// }
+    ///
+    /// impl PatternFormatter for MyFormatter {
+    ///     fn custom_format(
+    ///         &mut self,
+    ///         time: DateTime<Utc>,
+    ///         metadata: &Metadata,
+    ///         log_record: &str,
+    ///     ) -> String {
+    ///         format!(
+    ///             "[CALLSITE: {}][{:?}][{}]{}\n",
+    ///             self.callsite, time, metadata.level, log_record
+    ///         )
+    ///     }
+    /// }
+    ///
+    /// # fn main() {
+    /// init!();
+    /// let my_formatter = MyFormatter {
+    ///     callsite: "main callsite",
+    /// };
+    /// with_formatter!(my_formatter);
+    /// // logging calls...
+    /// # }
+    /// ```
     fn custom_format(
         &mut self,
         time: DateTime<Utc>,
@@ -258,13 +306,8 @@ pub trait PatternFormatter {
     ) -> String;
 }
 
+/// A basic formatter implementing [`PatternFormatter`].
 pub struct QuickLogFormatter;
-
-impl QuickLogFormatter {
-    fn new() -> Self {
-        Self {}
-    }
-}
 
 impl PatternFormatter for QuickLogFormatter {
     fn custom_format(&mut self, time: DateTime<Utc>, _: &Metadata, log_record: &str) -> String {
@@ -272,7 +315,7 @@ impl PatternFormatter for QuickLogFormatter {
     }
 }
 
-/// Main logging handler
+/// Main logging handler.
 pub struct Quicklog {
     flusher: Box<dyn Flush>,
     clock: Box<dyn Clock>,
@@ -285,23 +328,24 @@ pub struct Quicklog {
 
 impl Quicklog {
     /// Eagerly initializes the global [`Quicklog`] logger.
-    /// Can be called through [`init!`] macro
+    /// Can be called through [`init!`] macro.
     pub fn init() {
         // Referencing forces evaluation of Lazy
         _ = logger();
     }
 
-    /// Sets which flusher to be used, used in [`with_flush!`]
+    /// Sets which flusher to be used, used in [`with_flush!`].
     #[doc(hidden)]
     pub fn use_flush(&mut self, flush: Box<dyn Flush>) {
         self.flusher = flush
     }
 
+    /// Sets which flusher to be used, used in [`with_formatter!`].
     pub fn use_formatter(&mut self, formatter: Box<dyn PatternFormatter>) {
         self.formatter = formatter
     }
 
-    /// Sets which clock to be used, used in [`with_clock!`]
+    /// Sets which clock to be used, used in [`with_clock!`].
     #[doc(hidden)]
     pub fn use_clock(&mut self, clock: Box<dyn Clock>) {
         self.clock = clock
@@ -313,7 +357,7 @@ impl Quicklog {
         self.clock.get_instant()
     }
 
-    /// Internal API to get a chunk from buffer
+    /// Internal API to get a chunk from buffer.
     ///
     /// <strong>DANGER</strong>
     ///
@@ -321,7 +365,7 @@ impl Quicklog {
     /// there isn't sufficient space left inside of [`BUFFER`]. If this happens,
     /// the buffer might overwrite previous data with anything.
     ///
-    /// In debug, the method panics when we reach the end of the buffer
+    /// In debug, the method panics when we reach the end of the buffer.
     #[doc(hidden)]
     pub fn get_chunk_as_mut(&mut self, chunk_size: usize) -> &mut [u8] {
         self.byte_buffer.get_chunk_as_mut(chunk_size)
@@ -403,7 +447,7 @@ impl Quicklog {
         Ok(())
     }
 
-    /// Returns chunks/buffers for writing to
+    /// Returns chunks/buffers for writing to.
     pub fn prepare_write(&mut self) -> (WriteChunkUninit<'_, u8>, &mut String) {
         let chunk = self.sender.write_chunk().expect("queue full");
         let buf = &mut self.fmt_buffer;
@@ -412,7 +456,7 @@ impl Quicklog {
     }
 
     /// Consumes a previously obtained write chunk and commits the written
-    /// slots, making them available for reading
+    /// slots, making them available for reading.
     pub fn finish_write(chunk: WriteChunkUninit<'_, u8>, committed: usize) {
         unsafe { chunk.commit(committed) }
     }
@@ -425,7 +469,7 @@ impl Default for Quicklog {
         Quicklog {
             flusher: Box::new(FileFlusher::new("logs/quicklog.log")),
             clock: Box::new(QuantaClock::new()),
-            formatter: Box::new(QuickLogFormatter::new()),
+            formatter: Box::new(QuickLogFormatter),
             sender: Sender(sender),
             receiver: Receiver(receiver),
             fmt_buffer: String::with_capacity(2048),

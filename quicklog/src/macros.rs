@@ -1,35 +1,37 @@
-/// Used to amend which `Flush` is currently attached to `Quicklog`
-/// An implementation can be passed in at runtime as long as it
-/// adheres to the `Flush` trait in `quicklog-flush`
+/// Used to amend which [`Flush`](quicklog_flush::Flush) implementor is
+/// currently attached to the global [`Quicklog`](crate::Quicklog) logger.
 #[macro_export]
 macro_rules! with_flush {
     ($flush:expr) => {{
-        $crate::logger().use_flush($crate::make_container!($flush))
+        $crate::logger().use_flush(std::boxed::Box::new($flush))
     }};
 }
 
-/// Used to amend which `PatternFormatter` is currently attached to `Quicklog`
-/// An implementation can be passed in at runtime as long as it
-/// adheres to the `PatternFormatter` trait in `quicklog-formatter`
+/// Used to amend which [`PatternFormatter`](crate::PatternFormatter)
+/// implementor is currently attached to the global
+/// [`Quicklog`](crate::Quicklog) logger.
 #[macro_export]
 macro_rules! with_formatter {
     ($formatter:expr) => {{
-        $crate::logger().use_formatter($crate::make_container!($formatter))
+        $crate::logger().use_formatter(std::boxed::Box::new($formatter))
     }};
 }
 
-/// Flushes log lines into the file path specified
+/// Overwrites the [`Flush`](quicklog_flush::Flush)
+/// implementor in [`Quicklog`](crate::Quicklog) with a
+/// [`FileFlusher`](quicklog_flush::file_flusher::FileFlusher) using the
+/// provided file path.
 #[macro_export]
 macro_rules! with_flush_into_file {
     ($file_path:expr) => {{
         use quicklog_flush::FileFlusher;
         let flusher = FileFlusher::new($file_path);
-        $crate::logger().use_flush($crate::make_container!(flusher));
+        $crate::logger().use_flush(std::boxed::Box::new(flusher));
     }};
 }
 
-/// Initializes Quicklog by calling [`Quicklog::init()`]
-/// Should only be called once in the application
+/// Initializes Quicklog by calling [`Quicklog::init()`]. **NOTE**: This should
+/// only be called once in the application!
 ///
 /// [`Quicklog::init()`]: crate::Quicklog::init
 #[macro_export]
@@ -39,24 +41,13 @@ macro_rules! init {
     };
 }
 
-/// Used to amend which `Clock` is currently attached to `Quicklog`
-/// An implementation can be passed in at runtime as long as it
-/// adheres to the `Clock` trait in `quicklog-clock`
+/// Used to amend which [`Clock`](quicklog_clock::Clock) implementor is
+/// currently attached to the global [`Quicklog`](crate::Quicklog) logger.
 #[macro_export]
 macro_rules! with_clock {
     ($clock:expr) => {{
-        $crate::logger().use_clock($crate::make_container!($clock))
+        $crate::logger().use_clock(std::boxed::Box::new($clock))
     }};
-}
-
-/// Wrapper to wrap an item inside of the Container currently used
-/// by Quicklog, not meant for external use
-#[doc(hidden)]
-#[macro_export]
-macro_rules! make_container {
-    ($item:expr) => {
-        std::boxed::Box::new($item)
-    };
 }
 
 /// Checks if the current level we are trying to log is enabled
@@ -66,21 +57,6 @@ macro_rules! is_level_enabled {
     ($level:expr) => {
         $level as usize >= $crate::level::max_level() as usize
     };
-}
-
-// in debug, without clone, we have to make a Arc of Store, this ensures
-// we are able to properly keep track of the stores we are using
-//
-// in release, we have a clonable store, so we remove the overhead of Arc
-#[doc(hidden)]
-#[macro_export]
-macro_rules! make_store {
-    ($serializable:expr) => {{
-        let (store, _) = $serializable
-            .encode($crate::logger().get_chunk_as_mut($serializable.buffer_size_required()));
-
-        store
-    }};
 }
 
 /// Flushes all log records onto an implementor of [`Flush`], which can be

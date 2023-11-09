@@ -2,7 +2,7 @@ use rtrb::{chunks::WriteChunkUninit, Producer};
 
 use super::WriteError;
 
-/// Producer side of queue
+/// Producer side of queue.
 pub(crate) struct Sender(pub(crate) Producer<u8>);
 
 impl Sender {

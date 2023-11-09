@@ -6,10 +6,10 @@ use crate::{level::Level, utils::any_as_bytes};
 
 use super::{ChunkRead, ChunkWrite, ReadError, ReadResult};
 
-/// Result from trying to pop from logging queue
+/// Result from trying to pop from logging queue.
 pub type FlushResult = Result<(), FlushError>;
 
-/// Errors that can be presented when flushing
+/// Errors that can be presented when flushing.
 #[derive(Debug)]
 pub enum FlushError {
     /// Queue is empty
@@ -20,6 +20,7 @@ pub enum FlushError {
     Decode,
 }
 
+/// Information related to each macro callsite.
 #[derive(Debug, PartialEq)]
 pub struct Metadata {
     pub module_path: &'static str,
@@ -29,6 +30,12 @@ pub struct Metadata {
     pub format_str: &'static str,
 }
 
+/// The type of logging argument.
+///
+/// `Fmt` typically refers to an argument whose [`Debug`](std::fmt::Debug)
+/// or [`Display`](std::fmt::Display) implementation is used
+/// instead, whereas `Serialize` refers to arguments whose
+/// [`Serialize`](crate::serialize::Serialize) implementations are recorded.
 #[derive(Clone, Copy, Debug)]
 #[repr(usize)]
 pub enum LogArgType {
@@ -58,6 +65,10 @@ impl ChunkRead for LogArgType {
     }
 }
 
+/// Main header for every log record.
+///
+/// This is written at the start of every log record to inform the reader
+/// how to read from the queue.
 #[derive(Debug)]
 #[repr(C)]
 pub struct LogHeader<'a> {
@@ -104,6 +115,8 @@ impl ChunkWrite for LogHeader<'_> {
     }
 }
 
+/// Header for logging arguments using their
+/// [`Serialize`](crate::serialize::Serialize) implementation.
 #[derive(Debug)]
 #[repr(C)]
 pub struct SerializeArgHeader {
@@ -125,6 +138,7 @@ impl ChunkWrite for SerializeArgHeader {
     }
 }
 
+/// Header for logging arguments which are formatted into the buffer.
 #[derive(Debug)]
 #[repr(C)]
 pub struct FmtArgHeader {

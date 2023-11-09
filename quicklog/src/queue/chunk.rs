@@ -90,13 +90,17 @@ impl ChunkWrite for &[u8] {
 /// Error writing to the queue.
 #[derive(Copy, Clone, Debug)]
 pub enum WriteError {
+    /// Queue does not have sufficient capacity to be written to.
     NotEnoughSpace,
 }
 
 /// Error reading from the queue.
 #[derive(Copy, Clone, Debug)]
 pub enum ReadError {
+    /// Queue does not have sufficient valid bytes left to read the required
+    /// value.
     NotEnoughBytes,
+    /// Value parsed from the queue does not match expected value.
     UnexpectedValue,
 }
 
@@ -111,6 +115,7 @@ impl From<ReadError> for FlushError {
 
 /// Error advancing [`CursorRef`] or [`CursorMut`] through the queue.
 pub enum CursorError {
+    /// Queue does not have any space left to advance through.
     NoSpaceLeft,
 }
 
@@ -122,12 +127,12 @@ impl From<CursorError> for ReadError {
     }
 }
 
-/// Similar to [`std::io::Cursor`], but manages two buffers.
+/// Similar to [`std::io::Cursor`], but manages reading from up to two buffers.
 ///
 /// For the main read operations, if the head slice does not have enough
-/// remaining capacity to reconstruct the type, then it moves on to the
-/// next slice and continues parsing. Once this happens, subsequent reads
-/// made via this cursor instance will read from this second slice.
+/// remaining capacity to reconstruct the type, then it moves on to the next
+/// slice and continues parsing. Once this happens, subsequent reads made via
+/// this cursor instance will read from this second slice.
 pub struct CursorRef<'buf> {
     head: &'buf [u8],
     tail: Option<&'buf [u8]>,
@@ -208,7 +213,12 @@ impl<'buf> CursorRef<'buf> {
     }
 }
 
-/// Same as [`CursorRef`], but for write operations.
+/// Similar to [`std::io::Cursor`], but manages writing to up to two buffers.
+///
+/// For the main write operations, if the head slice does not have enough
+/// remaining capacity to reconstruct the type, then it moves on to the next
+/// slice and continues writing. Once this happens, subsequent writes made via
+/// this cursor instance will write to this second slice.
 pub struct CursorMut<'buf> {
     head: &'buf mut [u8],
     tail: Option<&'buf mut [u8]>,
