@@ -25,4 +25,13 @@ fn main() {
             "The quick brown fox jumps over the lazy dog"
         )
     );
+
+    assert_message_equal!(
+        info!(a = &s, b = &&bs, c = &&&s, "serialize with ref types:"),
+        format!(
+            "serialize with ref types: a=Hello b=vec: {:?}, str: {} c=Hello",
+            vec![1; 100],
+            "The quick brown fox jumps over the lazy dog"
+        )
+    );
 }
