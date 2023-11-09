@@ -42,7 +42,7 @@ fn main() {
     assert_message_equal!(
             info!(
                 ?s1,
-                borrow_s2_field = %s2,
+                borrow_s2_field = %&s2,
                 some_inner_field.inner.field.inner.arg = "hello world",
                 "no name field, non-nested field, nested field:"
             ),

@@ -197,7 +197,7 @@ fn bench_logger_pass_by_ref(b: &mut Bencher) {
         some: "The quick brown fox jumps over the lazy dog",
     });
     with_flush!(NoopFlusher);
-    loop_with_cleanup!(b, quicklog::info!(?&bs, "Here's some text"));
+    loop_with_cleanup!(b, quicklog::info!(a = ?&bs, "Here's some text"));
 }
 
 fn bench_loggers(c: &mut Criterion) {

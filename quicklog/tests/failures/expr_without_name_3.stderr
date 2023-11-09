@@ -1,0 +1,5 @@
+error: unexpected token
+ --> tests/failures/expr_without_name_3.rs:9:14
+  |
+9 |     info!(foo());
+  |              ^^

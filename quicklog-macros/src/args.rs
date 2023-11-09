@@ -8,12 +8,15 @@ use syn::{
 
 use crate::format_arg::FormatArg;
 
-/// Dot-delimited identifiers, e.g. `ident_a.some_field.other_field`
-pub(crate) type DotDelimitedIdent = Punctuated<Ident, Token![.]>;
+/// Dot-delimited identifiers with optional prefix;
+pub(crate) type PrefixedIdent = PrefixedArg<DotDelimitedIdent>;
+
+/// Expressions with optional prefix.
+pub(crate) type PrefixedExpr = PrefixedArg<Expr>;
 
 /// Comma-separated sequence of `PrefixedArg`-based named fields
 /// e.g. `my.name = ?debug_struct`, `%display_struct`
-pub(crate) type PrefixedFields = Punctuated<NamedField<PrefixedArg>, Token![,]>;
+pub(crate) type PrefixedFields = Punctuated<PrefixedField, Token![,]>;
 
 /// Comma-separated sequence of `Expr`-based named fields
 /// e.g. `my.name = debug_struct`, `display_struct`
@@ -21,19 +24,95 @@ pub(crate) type PrefixedFields = Punctuated<NamedField<PrefixedArg>, Token![,]>;
 /// main field argument, since those are not valid Rust expressions
 pub(crate) type ExprFields = Punctuated<NamedField<Expr>, Token![,]>;
 
-/// Formatting argument with an optional prefix
-/// e.g. `?debug_struct`, `%display_struct`, `serialize_struct`
-#[derive(Clone)]
-pub(crate) enum PrefixedArg {
-    /// `?debug_struct`
-    Debug(Expr),
-    /// `%display_struct`
-    Display(Expr),
-    /// `serialize_struct` (no prefix by default)
-    Serialize(Expr),
+/// Dot-delimited identifiers, e.g. `ident_a.some_field.other_field`
+pub(crate) struct DotDelimitedIdent(Punctuated<Ident, Token![.]>);
+
+impl Parse for DotDelimitedIdent {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Ok(Self(Punctuated::parse_separated_nonempty(input)?))
+    }
 }
 
-impl PrefixedArg {
+impl ToTokens for DotDelimitedIdent {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        self.0.to_tokens(tokens);
+    }
+}
+
+/// Optionally-named prefixed fields.
+pub(crate) enum PrefixedField {
+    /// If unnamed, then can only be an optionally-prefixed dot-delimited ident.
+    /// e.g. `my.struct.field`, `?my.debug_struct.inner`
+    Unnamed(PrefixedIdent),
+    /// If named, then can be an optionally-prefixed expression.
+    /// e.g. `?(5 + 1)`, `%"hello world"`, `some_struct.inner`
+    Named(NamedField<PrefixedExpr>),
+}
+
+impl PrefixedField {
+    pub(crate) fn name(&self) -> TokenStream2 {
+        match self {
+            Self::Unnamed(ident) => ident.name(),
+            Self::Named(f) => {
+                // During parsing, guaranteed that `PrefixedField` will have a
+                // name
+                f.name.as_ref().unwrap().into_token_stream()
+            }
+        }
+    }
+}
+
+impl Parse for PrefixedField {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        // Look ahead to check if this contains a name
+        let begin = input.fork();
+        let mut cursor = begin.cursor();
+        let mut has_name = false;
+        while let Some((tt, next)) = cursor.token_tree() {
+            match &tt {
+                TokenTree::Punct(punct) if punct.as_char() == ',' => break,
+                TokenTree::Punct(punct) if punct.as_char() == '=' => {
+                    has_name = true;
+                    break;
+                }
+                _ => cursor = next,
+            }
+        }
+
+        let parsed = if has_name {
+            Self::Named(input.parse()?)
+        } else {
+            Self::Unnamed(input.parse()?)
+        };
+
+        Ok(parsed)
+    }
+}
+
+/// Formatting argument with an optional prefix.
+/// e.g. `?debug_struct`, `%display_struct`, `serialize_struct`
+#[derive(Clone)]
+pub(crate) enum PrefixedArg<T> {
+    /// `?debug_struct`
+    Debug(T),
+    /// `%display_struct`
+    Display(T),
+    /// `serialize_struct` (no prefix by default)
+    Serialize(T),
+}
+
+impl PrefixedIdent {
+    /// The underlying identifier
+    fn name(&self) -> TokenStream2 {
+        match self {
+            PrefixedArg::Debug(i) | PrefixedArg::Display(i) | PrefixedArg::Serialize(i) => {
+                i.into_token_stream()
+            }
+        }
+    }
+}
+
+impl PrefixedExpr {
     /// The captured expression for this argument
     pub(crate) fn expr(&self) -> &Expr {
         match self {
@@ -42,13 +121,13 @@ impl PrefixedArg {
     }
 }
 
-impl ToTokens for PrefixedArg {
+impl ToTokens for PrefixedExpr {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
         self.expr().to_tokens(tokens);
     }
 }
 
-impl Parse for PrefixedArg {
+impl<T: Parse> Parse for PrefixedArg<T> {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         if input.peek(Token![?]) {
             input.parse::<Token![?]>()?;
@@ -64,7 +143,7 @@ impl Parse for PrefixedArg {
     }
 }
 
-impl FormatArg for PrefixedArg {
+impl<T> FormatArg for PrefixedArg<T> {
     fn formatter(&self) -> &'static str {
         match self {
             Self::Debug(_) => "{:?}",
@@ -84,42 +163,29 @@ pub(crate) struct NamedField<T: Parse> {
     pub(crate) arg: T,
 }
 
-impl<T: Parse + FormatArg + ToTokens> NamedField<T> {
-    /// Returns identifier tokens for the name describing this field
-    /// If the original form was parsed from something like "my_name = foo",
-    /// then identifier is `my_name`. Otherwise, the name is taken from the
-    /// expression, which would just be `foo` in this case.
-    pub(crate) fn name(&self) -> TokenStream2 {
-        if let Some(n) = &self.name {
-            n.into_token_stream()
-        } else {
-            (&self.arg).into_token_stream()
-        }
-    }
-}
-
 impl<T: Parse + ToTokens> Parse for NamedField<T> {
     fn parse(input: ParseStream) -> parse::Result<Self> {
-        // Look ahead to check if this contains an assignment
+        // Look ahead to check if this contains a name
+        // NOTE: we need to perform this check because `T` can be an expr, and
+        // `a = some_expr()` *is* an expression of its own!
+        // So directly doing `T::parse(input)` can consume the `=` token,
+        // which means we lose information about the name.
         let begin = input.fork();
         let mut cursor = begin.cursor();
-        let mut has_assign = false;
+        let mut has_name = false;
         while let Some((tt, next)) = cursor.token_tree() {
             match &tt {
                 TokenTree::Punct(punct) if punct.as_char() == ',' => break,
                 TokenTree::Punct(punct) if punct.as_char() == '=' => {
-                    has_assign = true;
+                    has_name = true;
                     break;
                 }
                 _ => cursor = next,
             }
         }
 
-        let (name, assign) = if has_assign {
-            (
-                Some(DotDelimitedIdent::parse_separated_nonempty(input)?),
-                Some(input.parse()?),
-            )
+        let (name, assign) = if has_name {
+            (Some(input.parse()?), Some(input.parse()?))
         } else {
             (None, None)
         };

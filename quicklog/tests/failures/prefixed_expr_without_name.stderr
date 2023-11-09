@@ -1,0 +1,5 @@
+error: expected identifier
+  --> tests/failures/prefixed_expr_without_name.rs:10:12
+   |
+10 |     info!(?&x);
+   |            ^

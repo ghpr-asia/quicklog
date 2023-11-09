@@ -1,9 +1,9 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::parse_macro_input;
 
-use crate::args::{Args, PrefixedArg};
+use crate::args::{Args, PrefixedArg, PrefixedField};
 use crate::format_arg::FormatArg;
 use crate::Level;
 
@@ -30,6 +30,26 @@ fn has_fmt_specifiers(fmt_str: &str) -> bool {
     false
 }
 
+/// Codegen for writing of prefixed fields to the buffer.
+fn gen_write_field(prefixed_field: &PrefixedField) -> TokenStream2 {
+    fn gen_write_arg<T: ToTokens>(arg: &PrefixedArg<T>) -> TokenStream2 {
+        let formatter = arg.formatter();
+        match arg {
+            PrefixedArg::Debug(a) | PrefixedArg::Display(a) => {
+                quote! { cursor.write_fmt(fmt_buffer, format_args!(#formatter, &#a))?; }
+            }
+            PrefixedArg::Serialize(a) => {
+                quote! { cursor.write_serialize(&#a)?; }
+            }
+        }
+    }
+
+    match prefixed_field {
+        PrefixedField::Unnamed(ident) => gen_write_arg(ident),
+        PrefixedField::Named(field) => gen_write_arg(&field.arg),
+    }
+}
+
 /// Parses token stream into the different components of `Args` and
 /// generates required tokens from the inputs
 pub(crate) fn expand(level: Level, input: TokenStream) -> TokenStream {
@@ -38,21 +58,7 @@ pub(crate) fn expand(level: Level, input: TokenStream) -> TokenStream {
 
 /// Main function for expanding the components parsed from the macro call
 pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
-    let prefixed_args_write: Vec<_> = args
-        .prefixed_fields
-        .iter()
-        .map(|prefixed_field| {
-            let formatter = prefixed_field.arg.formatter();
-            match &prefixed_field.arg {
-                PrefixedArg::Serialize(a) => {
-                    quote! { cursor.write_serialize(&#a)?; }
-                }
-                PrefixedArg::Debug(a) | PrefixedArg::Display(a) => {
-                    quote! { cursor.write_fmt(fmt_buffer, format_args!(#formatter, &#a))?; }
-                }
-            }
-        })
-        .collect();
+    let prefixed_args_write: Vec<_> = args.prefixed_fields.iter().map(gen_write_field).collect();
 
     let original_fmt_str = args
         .format_string
