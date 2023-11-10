@@ -231,6 +231,31 @@ impl<T: Serialize> Serialize for &T {
     }
 }
 
+/// Generates a format string with normal format specifiers for each value
+/// passed in. Intended for limited dynamic construction of format strings.
+///
+/// # Examples
+///
+/// ```ignore
+/// let x = repeat_fmt!(1, 3.15, "hello world");
+/// assert_eq!(x, "{}, {}, {}");
+/// ```
+#[doc(hidden)]
+macro_rules! repeat_fmt {
+    (@ ( $($acc:tt)* )) => {
+        stringify!($($acc),*)
+    };
+    (@ ( $($acc:tt)* ) $arg:expr) => {
+        repeat_fmt!(@ ( $($acc)* {} ))
+    };
+    (@ ( $($acc:tt)* ) $arg:expr, $($rest:expr),*) => {
+        repeat_fmt!(@ ( $($acc)* {} ) $($rest),*)
+    };
+    ($($arg:tt),*) => {
+        repeat_fmt!(@ () $($arg),*)
+    };
+}
+
 macro_rules! tuple_serialize {
     ($($name:ident)+) => {
         impl<$($name: Serialize),*> Serialize for ($($name,)*) {
@@ -248,7 +273,7 @@ macro_rules! tuple_serialize {
             #[allow(non_snake_case)]
             fn decode(read_buf: &[u8]) -> (String, &[u8]) {
                 $(let (ref $name, read_buf) = <$name as Serialize>::decode(read_buf);)*
-                (format!("{:?}", ($($name),*)), read_buf)
+                (format!(concat!("(", repeat_fmt!($($name),*), ")"), $($name),*), read_buf)
             }
 
             #[allow(non_snake_case)]
@@ -404,7 +429,7 @@ mod tests {
         let (store, _) = (&a, b, c, s).encode(&mut buf);
         assert_eq!(
             format!(
-                "({:?}, \"{}\", \"{}\", \"SerializeStruct {{ d: {}, e: {} }}\")",
+                "({}, {}, {}, SerializeStruct {{ d: {}, e: {} }})",
                 a, b, c, d, e
             ),
             format!("{}", store)
