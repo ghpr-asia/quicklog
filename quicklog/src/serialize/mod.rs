@@ -1,4 +1,4 @@
-use std::{fmt::Display, str::from_utf8};
+use std::{fmt::Display, mem::size_of, str::from_utf8};
 
 pub mod buffer;
 
@@ -66,7 +66,7 @@ pub trait Serialize {
 pub type DecodeFn = fn(&[u8]) -> (String, &[u8]);
 
 /// Number of bytes it takes to store the size of a type.
-pub const SIZE_LENGTH: usize = std::mem::size_of::<usize>();
+pub const SIZE_LENGTH: usize = size_of::<usize>();
 
 /// Contains the decode function required to decode `buffer` back into a `String`
 /// representation.
@@ -97,7 +97,7 @@ macro_rules! gen_serialize {
     ($primitive:ty) => {
         impl Serialize for $primitive {
             fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
-                let size = self.buffer_size_required();
+                let size = size_of::<$primitive>();
                 let (x, rest) = write_buf.split_at_mut(size);
                 x.copy_from_slice(&self.to_le_bytes());
 
@@ -105,27 +105,76 @@ macro_rules! gen_serialize {
             }
 
             fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-                let (chunk, rest) = read_buf.split_at(std::mem::size_of::<$primitive>());
+                let (chunk, rest) = read_buf.split_at(size_of::<$primitive>());
                 let x = <$primitive>::from_le_bytes(chunk.try_into().unwrap());
 
                 (format!("{}", x), rest)
             }
 
             fn buffer_size_required(&self) -> usize {
-                std::mem::size_of::<$primitive>()
+                size_of::<$primitive>()
             }
         }
     };
 }
 
+gen_serialize!(i8);
+gen_serialize!(i16);
 gen_serialize!(i32);
 gen_serialize!(i64);
+gen_serialize!(i128);
 gen_serialize!(isize);
-gen_serialize!(f32);
-gen_serialize!(f64);
+
+gen_serialize!(u8);
+gen_serialize!(u16);
 gen_serialize!(u32);
 gen_serialize!(u64);
+gen_serialize!(u128);
 gen_serialize!(usize);
+
+gen_serialize!(f32);
+gen_serialize!(f64);
+
+impl Serialize for bool {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+        let (chunk, rest) = write_buf.split_at_mut(size_of::<bool>());
+        chunk.copy_from_slice(&(*self as u8).to_le_bytes());
+
+        (Store::new(Self::decode, chunk), rest)
+    }
+
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        let (chunk, rest) = read_buf.split_at(size_of::<bool>());
+        let x = u8::from_le_bytes(chunk.try_into().unwrap()) != 0;
+
+        (format!("{}", x), rest)
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        size_of::<bool>()
+    }
+}
+
+impl Serialize for char {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+        let (chunk, rest) = write_buf.split_at_mut(size_of::<char>());
+        chunk.copy_from_slice(&(*self as u32).to_le_bytes());
+
+        (Store::new(Self::decode, chunk), rest)
+    }
+
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        let (chunk, rest) = read_buf.split_at(size_of::<char>());
+        // Assuming that we encoded this char
+        let c = char::from_u32(u32::from_le_bytes(chunk.try_into().unwrap())).unwrap();
+
+        (format!("{}", c), rest)
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        size_of::<char>()
+    }
+}
 
 impl Serialize for &str {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
@@ -182,6 +231,50 @@ impl<T: Serialize> Serialize for &T {
     }
 }
 
+macro_rules! tuple_serialize {
+    ($($name:ident)+) => {
+        impl<$($name: Serialize),*> Serialize for ($($name,)*) {
+            #[allow(non_snake_case)]
+            #[allow(unused)]
+            fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+                let ($(ref $name,)*) = *self;
+                let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
+                let (_, mut tail) = chunk.split_at_mut(0);
+                $( (_, tail) = $name.encode(tail); )*
+
+                (Store::new(Self::decode, chunk), rest)
+            }
+
+            #[allow(non_snake_case)]
+            fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+                $(let (ref $name, read_buf) = <$name as Serialize>::decode(read_buf);)*
+                (format!("{:?}", ($($name),*)), read_buf)
+            }
+
+            #[allow(non_snake_case)]
+            fn buffer_size_required(&self) -> usize {
+                let ($(ref $name,)*) = *self;
+                let mut size = 0;
+                $( size += $name.buffer_size_required(); )*
+                size
+            }
+        }
+    };
+}
+
+tuple_serialize!(A);
+tuple_serialize!(A B);
+tuple_serialize!(A B C);
+tuple_serialize!(A B C D);
+tuple_serialize!(A B C D E);
+tuple_serialize!(A B C D E F);
+tuple_serialize!(A B C D E F G);
+tuple_serialize!(A B C D E F G H);
+tuple_serialize!(A B C D E F G H I);
+tuple_serialize!(A B C D E F G H I J);
+tuple_serialize!(A B C D E F G H I J K);
+tuple_serialize!(A B C D E F G H I J K L);
+
 /// Eager evaluation into a String for debug structs
 pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &mut [u8]) -> (Store, &mut [u8]) {
     let val_string = format!("{:?}", val);
@@ -197,13 +290,16 @@ pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &mut [u8]) -> (Store,
 
 #[cfg(test)]
 mod tests {
-    use crate::serialize::encode_debug;
-
-    use super::Serialize;
+    use crate as quicklog;
+    use crate::{
+        serialize::{encode_debug, Serialize},
+        Serialize,
+    };
+    use std::mem::size_of;
 
     macro_rules! assert_primitive_encode_decode {
         ($primitive:ty, $val:expr) => {{
-            const BUF_SIZE: usize = std::mem::size_of::<$primitive>();
+            const BUF_SIZE: usize = size_of::<$primitive>();
             let mut buf = [0u8; BUF_SIZE];
 
             let x: $primitive = $val;
@@ -272,5 +368,46 @@ mod tests {
         let (store, _) = encode_debug(&s, &mut buf);
 
         assert_eq!(format!("{:?}", s), format!("{}", store))
+    }
+
+    #[test]
+    fn serialize_bool_char() {
+        let a = true;
+        let b = 'b';
+        let c = 'ß';
+        let mut buf = [0; 128];
+        let (a_store, rest) = a.encode(&mut buf);
+        let (b_store, rest) = b.encode(rest);
+        let (c_store, _) = c.encode(rest);
+
+        assert_eq!(format!("{}", a), format!("{}", a_store));
+        assert_eq!(format!("{}", b), format!("{}", b_store));
+        assert_eq!(format!("{}", c), format!("{}", c_store));
+    }
+
+    #[test]
+    fn serialize_tuple() {
+        let a = "hello world".to_string();
+        let b: usize = 100000;
+        let c: i32 = -999;
+
+        #[derive(Serialize)]
+        struct SerializeStruct {
+            d: usize,
+            e: String,
+        }
+        let d = 1;
+        let e = "some struct".to_string();
+        let s = SerializeStruct { d: 1, e: e.clone() };
+
+        let mut buf = [0; 256];
+        let (store, _) = (&a, b, c, s).encode(&mut buf);
+        assert_eq!(
+            format!(
+                "({:?}, \"{}\", \"{}\", \"SerializeStruct {{ d: {}, e: {} }}\")",
+                a, b, c, d, e
+            ),
+            format!("{}", store)
+        );
     }
 }
