@@ -396,7 +396,7 @@ impl Quicklog {
                 break;
             };
 
-            let num_args = log_header.num_args;
+            let num_args = log_header.metadata.num_args;
             let mut decoded_args = Vec::with_capacity(num_args);
             while decoded_args.len() < num_args {
                 let Ok(arg_type) = cursor.read::<LogArgType>() else {

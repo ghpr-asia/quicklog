@@ -114,7 +114,8 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
                 file: std::file!(),
                 line: std::line!(),
                 level: #level,
-                format_str: #fmt_str
+                format_str: #fmt_str,
+                num_args: #num_args,
             };
 
             (|| {
@@ -124,11 +125,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
                 let (first, second) = chunk.as_mut_slices();
                 let mut cursor = quicklog::queue::CursorMut::new(first, second);
 
-                let header = quicklog::queue::LogHeader {
-                    metadata: &META,
-                    instant: now,
-                    num_args: #num_args,
-                };
+                let header = quicklog::queue::LogHeader::new(&META, now);
                 cursor.write(&header)?;
 
                 #fmt_args_write

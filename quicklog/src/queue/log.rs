@@ -28,6 +28,7 @@ pub struct Metadata {
     pub line: u32,
     pub level: Level,
     pub format_str: &'static str,
+    pub num_args: usize,
 }
 
 /// The type of logging argument.
@@ -72,29 +73,28 @@ impl ChunkRead for LogArgType {
 #[derive(Debug)]
 #[repr(C)]
 pub struct LogHeader<'a> {
-    pub metadata: &'a Metadata,
-    pub instant: Instant,
-    pub num_args: usize,
+    pub(crate) metadata: &'a Metadata,
+    pub(crate) instant: Instant,
+}
+
+impl<'a> LogHeader<'a> {
+    pub fn new(metadata: &'a Metadata, instant: Instant) -> Self {
+        Self { metadata, instant }
+    }
 }
 
 impl ChunkRead for LogHeader<'_> {
     fn read(buf: &[u8]) -> ReadResult<Self> {
         let (header_chunk, _) = buf.split_at(<Self as ChunkRead>::bytes_required());
-        let (metadata_chunk, header_rest) = header_chunk.split_at(size_of::<&Metadata>());
-        let (timestamp_chunk, num_args_chunk) = header_rest.split_at(size_of::<Instant>());
+        let (metadata_chunk, timestamp_chunk) = header_chunk.split_at(size_of::<&Metadata>());
 
         let metadata: &Metadata = unsafe {
             &*(usize::from_le_bytes(metadata_chunk.try_into().unwrap()) as *const Metadata)
         };
         let instant_bytes: [u8; size_of::<Instant>()] = timestamp_chunk.try_into().unwrap();
         let instant: Instant = unsafe { std::mem::transmute(instant_bytes) };
-        let num_args = usize::from_le_bytes(num_args_chunk.try_into().unwrap());
 
-        Ok(LogHeader {
-            metadata,
-            instant,
-            num_args,
-        })
+        Ok(LogHeader { metadata, instant })
     }
 
     fn bytes_required() -> usize {
