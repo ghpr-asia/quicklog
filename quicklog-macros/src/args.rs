@@ -60,6 +60,24 @@ impl PrefixedField {
             }
         }
     }
+
+    pub(crate) fn arg(&self) -> TokenStream2 {
+        match self {
+            Self::Unnamed(ident) => ident.name(),
+            Self::Named(f) => f.arg.expr().into_token_stream(),
+        }
+    }
+
+    pub(crate) fn is_serialize(&self) -> bool {
+        matches!(
+            self,
+            Self::Unnamed(PrefixedArg::Serialize(_))
+                | Self::Named(NamedField {
+                    arg: PrefixedArg::Serialize(_),
+                    ..
+                })
+        )
+    }
 }
 
 impl Parse for PrefixedField {

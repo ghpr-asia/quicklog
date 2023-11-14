@@ -62,8 +62,23 @@ pub trait Serialize {
     fn buffer_size_required(&self) -> usize;
 }
 
+/// **WARNING: this is part of the public API and is primarily to aid in macro
+/// codegen.**
+///
+/// Helper trait for splitting the output of decoding for collections of types
+/// implementing [`Serialize`].
+#[doc(hidden)]
+pub trait SerializeTpl: Serialize {
+    /// Collects the outputs of [`Serialize::decode`] in an output buffer.
+    fn decode_each<'buf>(read_buf: &'buf [u8], out: &mut Vec<String>) -> &'buf [u8];
+}
+
 /// Function pointer which decodes a byte buffer back into `String` representation
 pub type DecodeFn = fn(&[u8]) -> (String, &[u8]);
+
+/// Function pointer which decodes a byte buffer and stores the results in an
+/// output buffer.
+pub type DecodeEachFn = for<'buf> fn(&'buf [u8], &mut Vec<String>) -> &'buf [u8];
 
 /// Number of bytes it takes to store the size of a type.
 pub const SIZE_LENGTH: usize = size_of::<usize>();
@@ -299,6 +314,36 @@ tuple_serialize!(A B C D E F G H I);
 tuple_serialize!(A B C D E F G H I J);
 tuple_serialize!(A B C D E F G H I J K);
 tuple_serialize!(A B C D E F G H I J K L);
+
+#[doc(hidden)]
+macro_rules! tuple_serialize_each {
+    ($($name:ident)+) => {
+        impl<$($name: Serialize),*> SerializeTpl for ($($name,)*) {
+            #[allow(non_snake_case)]
+            fn decode_each<'buf>(read_buf: &'buf [u8], out: &mut Vec<String>) -> &'buf [u8] {
+                $(
+                    let ($name, read_buf) = <$name as Serialize>::decode(read_buf);
+                    out.push($name);
+                 )*
+
+                read_buf
+            }
+        }
+    };
+}
+
+tuple_serialize_each!(A);
+tuple_serialize_each!(A B);
+tuple_serialize_each!(A B C);
+tuple_serialize_each!(A B C D);
+tuple_serialize_each!(A B C D E);
+tuple_serialize_each!(A B C D E F);
+tuple_serialize_each!(A B C D E F G);
+tuple_serialize_each!(A B C D E F G H);
+tuple_serialize_each!(A B C D E F G H I);
+tuple_serialize_each!(A B C D E F G H I J);
+tuple_serialize_each!(A B C D E F G H I J K);
+tuple_serialize_each!(A B C D E F G H I J K L);
 
 /// Eager evaluation into a String for debug structs
 pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &mut [u8]) -> (Store, &mut [u8]) {

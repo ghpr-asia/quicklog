@@ -233,11 +233,11 @@ use dyn_fmt::AsStrFormatExt;
 use once_cell::unsync::Lazy;
 use quanta::Instant;
 use queue::{
-    receiver::Receiver, sender::Sender, CursorRef, FlushError, FlushResult, LogArgType, LogHeader,
-    Metadata, ReadError,
+    receiver::Receiver, sender::Sender, ArgsKind, CursorRef, FlushError, FlushResult, LogArgType,
+    LogHeader, Metadata, ReadError,
 };
 use rtrb::{chunks::WriteChunkUninit, RingBuffer};
-use serialize::{buffer::ByteBuffer, DecodeFn};
+use serialize::{buffer::ByteBuffer, DecodeEachFn, DecodeFn};
 
 pub use ::lazy_format;
 pub use std::{file, line, module_path};
@@ -396,46 +396,61 @@ impl Quicklog {
                 break;
             };
 
-            let num_args = log_header.metadata.num_args;
-            let mut decoded_args = Vec::with_capacity(num_args);
-            while decoded_args.len() < num_args {
-                let Ok(arg_type) = cursor.read::<LogArgType>() else {
-                    break;
-                };
-
-                let decoded = match arg_type {
-                    LogArgType::Fmt => {
-                        // Remaining: size of argument
-                        let size_of_arg = cursor.read::<usize>()?;
-                        let arg_chunk = cursor.read_bytes(size_of_arg)?;
-
-                        // Assuming that we wrote this using in-built std::fmt, so should be valid string
-                        std::str::from_utf8(arg_chunk)
-                            .map_err(|_| ReadError::UnexpectedValue)?
-                            .to_string()
-                    }
-                    LogArgType::Serialize => {
-                        // Remaining: size of argument, DecodeFn
-                        let size_of_arg = cursor.read::<usize>()?;
-                        let decode_fn = cursor.read::<DecodeFn>()?;
-                        let arg_chunk = cursor.read_bytes(size_of_arg)?;
-
-                        let (decoded, _) = decode_fn(arg_chunk);
-                        decoded
-                    }
-                };
-                decoded_args.push(decoded);
-            }
-
-            if decoded_args.len() != num_args {
-                continue;
-            }
-
             let time = self
                 .clock
                 .compute_system_time_from_instant(&log_header.instant)
                 .expect("Unable to get time from Instant");
-            let formatted = log_header.metadata.format_str.format(&decoded_args);
+            let formatted = match log_header.metadata.args_kind {
+                ArgsKind::AllSerialize => {
+                    let mut decoded_args = Vec::new();
+                    _ = cursor.read::<LogArgType>()?;
+                    let size_of_arg = cursor.read::<usize>()?;
+                    let decode_fn = cursor.read::<DecodeEachFn>()?;
+                    let arg_chunk = cursor.read_bytes(size_of_arg)?;
+
+                    _ = decode_fn(arg_chunk, &mut decoded_args);
+
+                    log_header.metadata.format_str.format(&decoded_args)
+                }
+                ArgsKind::Normal(num_args) => {
+                    let mut decoded_args = Vec::with_capacity(num_args);
+                    while decoded_args.len() < num_args {
+                        let Ok(arg_type) = cursor.read::<LogArgType>() else {
+                            break;
+                        };
+
+                        let decoded = match arg_type {
+                            LogArgType::Fmt => {
+                                // Remaining: size of argument
+                                let size_of_arg = cursor.read::<usize>()?;
+                                let arg_chunk = cursor.read_bytes(size_of_arg)?;
+
+                                // Assuming that we wrote this using in-built std::fmt, so should be valid string
+                                std::str::from_utf8(arg_chunk)
+                                    .map_err(|_| ReadError::UnexpectedValue)?
+                                    .to_string()
+                            }
+                            LogArgType::Serialize => {
+                                // Remaining: size of argument, DecodeFn
+                                let size_of_arg = cursor.read::<usize>()?;
+                                let decode_fn = cursor.read::<DecodeFn>()?;
+                                let arg_chunk = cursor.read_bytes(size_of_arg)?;
+
+                                let (decoded, _) = decode_fn(arg_chunk);
+                                decoded
+                            }
+                        };
+                        decoded_args.push(decoded);
+                    }
+
+                    if decoded_args.len() != num_args {
+                        continue;
+                    }
+
+                    log_header.metadata.format_str.format(&decoded_args)
+                }
+            };
+
             let log_line = self
                 .formatter
                 .custom_format(time, log_header.metadata, &formatted);

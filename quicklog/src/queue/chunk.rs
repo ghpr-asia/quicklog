@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    serialize::{DecodeFn, Serialize},
+    serialize::{DecodeEachFn, DecodeFn, Serialize, SerializeTpl},
     utils::likely,
 };
 
@@ -42,6 +42,17 @@ impl ChunkRead for usize {
 }
 
 impl ChunkRead for DecodeFn {
+    fn read(buf: &[u8]) -> ReadResult<Self> {
+        let (chunk, _) = buf.split_at(<Self as ChunkRead>::bytes_required());
+        Ok(unsafe { std::mem::transmute(usize::from_le_bytes(chunk.try_into().unwrap())) })
+    }
+
+    fn bytes_required() -> usize {
+        size_of::<Self>()
+    }
+}
+
+impl ChunkRead for DecodeEachFn {
     fn read(buf: &[u8]) -> ReadResult<Self> {
         let (chunk, _) = buf.split_at(<Self as ChunkRead>::bytes_required());
         Ok(unsafe { std::mem::transmute(usize::from_le_bytes(chunk.try_into().unwrap())) })
@@ -248,6 +259,19 @@ impl<'buf> CursorMut<'buf> {
             type_of_arg: LogArgType::Serialize,
             size_of_arg: arg.buffer_size_required(),
             decode_fn: <T as Serialize>::decode as usize,
+        };
+        self.write(&header)?;
+        self.write(arg)
+    }
+
+    /// Same as [`write_serialize`], but assumes that the
+    /// argument is a packed tuple of >= 1 arguments implementing
+    /// [`Serialize`](crate::serialize::Serialize).
+    pub fn write_serialize_tpl<T: SerializeTpl>(&mut self, arg: &T) -> WriteResult<()> {
+        let header = SerializeArgHeader {
+            type_of_arg: LogArgType::Serialize,
+            size_of_arg: arg.buffer_size_required(),
+            decode_fn: <T as SerializeTpl>::decode_each as usize,
         };
         self.write(&header)?;
         self.write(arg)

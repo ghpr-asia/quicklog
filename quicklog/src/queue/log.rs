@@ -12,12 +12,26 @@ pub type FlushResult = Result<(), FlushError>;
 /// Errors that can be presented when flushing.
 #[derive(Debug)]
 pub enum FlushError {
-    /// Queue is empty
+    /// Queue is empty.
     Empty,
-    /// Error while parsing arguments due to reaching queue end
+    /// Error while parsing arguments due to reaching queue end.
     InsufficientSpace,
-    /// Encountered parsing/conversion failure for expected types
+    /// Encountered parsing/conversion failure for expected types.
     Decode,
+}
+
+/// The type of arguments found in the log record.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ArgsKind {
+    /// All arguments implement [`Serialize`](crate::serialize::Serialize).
+    ///
+    /// This is the optimized case emitted by the logging macro, indicating that
+    /// all the arguments have been packed into a single tuple argument (and
+    /// should be unpacked accordingly on the receiving end).
+    AllSerialize,
+    /// Mix of formatting arguments and arguments implementing
+    /// [`Serialize`](crate::serialize::Serialize).
+    Normal(usize),
 }
 
 /// Information related to each macro callsite.
@@ -28,7 +42,28 @@ pub struct Metadata {
     pub line: u32,
     pub level: Level,
     pub format_str: &'static str,
-    pub num_args: usize,
+    pub args_kind: ArgsKind,
+}
+
+impl Metadata {
+    #[inline]
+    pub const fn new(
+        module_path: &'static str,
+        file: &'static str,
+        line: u32,
+        level: Level,
+        format_str: &'static str,
+        args_kind: ArgsKind,
+    ) -> Self {
+        Self {
+            module_path,
+            file,
+            line,
+            level,
+            format_str,
+            args_kind,
+        }
+    }
 }
 
 /// The type of logging argument.

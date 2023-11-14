@@ -14,9 +14,11 @@ error[E0277]: the trait bound `A: quicklog::serialize::Serialize` is not satisfi
              i64
              i128
            and $N others
-note: required by a bound in `quicklog::queue::CursorMut::<'buf>::write_serialize`
+   = note: required for `&A` to implement `quicklog::serialize::Serialize`
+   = note: required for `(&A,)` to implement `SerializeTpl`
+note: required by a bound in `quicklog::queue::CursorMut::<'buf>::write_serialize_tpl`
   --> src/queue/chunk.rs
    |
-   |     pub fn write_serialize<T: Serialize>(&mut self, arg: &T) -> WriteResult<()> {
-   |                               ^^^^^^^^^ required by this bound in `CursorMut::<'buf>::write_serialize`
+   |     pub fn write_serialize_tpl<T: SerializeTpl>(&mut self, arg: &T) -> WriteResult<()> {
+   |                                   ^^^^^^^^^^^^ required by this bound in `CursorMut::<'buf>::write_serialize_tpl`
    = note: this error originates in the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)
