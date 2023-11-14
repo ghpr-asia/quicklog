@@ -81,6 +81,27 @@ fn bench_1024(b: &mut Bencher) {
     loop_with_cleanup!(b, black_box(quicklog::info!(arr, "Some data:")));
 }
 
+fn bench_3x4(b: &mut Bencher) {
+    quicklog::with_flush!(quicklog_flush::noop_flusher::NoopFlusher);
+    loop_with_cleanup!(
+        b,
+        black_box(quicklog::info!(a = 1u32, b = 2u32, c = 3u32, "Some data:"))
+    );
+}
+
+fn bench_2x4_string(b: &mut Bencher) {
+    quicklog::with_flush!(quicklog_flush::noop_flusher::NoopFlusher);
+    loop_with_cleanup!(
+        b,
+        black_box(quicklog::info!(
+            a = 1u32,
+            b = 2u32,
+            c = "The quick brown fox jumps over the lazy dog",
+            "Some data:"
+        ))
+    );
+}
+
 fn bench_serialize(c: &mut Criterion) {
     let mut group = c.benchmark_group("Serialize");
     group.bench_function("64B", bench_64);
@@ -88,6 +109,8 @@ fn bench_serialize(c: &mut Criterion) {
     group.bench_function("256B", bench_256);
     group.bench_function("512B", bench_512);
     group.bench_function("1024B", bench_1024);
+    group.bench_function("3x4", bench_3x4);
+    group.bench_function("2x4 + string", bench_2x4_string);
     group.finish();
 }
 
