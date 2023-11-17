@@ -5,9 +5,8 @@ use std::time::Duration;
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use lazy_format::make_lazy_format;
 use once_cell::sync::Lazy;
+use quanta::Instant;
 use quicklog::with_flush;
-use quicklog_clock::quanta::QuantaClock;
-use quicklog_clock::Clock;
 use quicklog_flush::noop_flusher::NoopFlusher;
 use recycle_box::{coerce_box, RecycleBox};
 
@@ -107,8 +106,9 @@ fn bench_recycle_box_lazy_format(b: &mut Bencher) {
 }
 
 fn bench_clock(b: &mut Bencher) {
-    static CLOCK: Lazy<QuantaClock> = Lazy::new(QuantaClock::new);
-    b.iter(|| black_box(CLOCK.get_instant()))
+    // Force initialization of quanta global clock
+    _ = Instant::now();
+    b.iter(|| black_box(Instant::now()))
 }
 
 fn bench_channel_send(b: &mut Bencher) {

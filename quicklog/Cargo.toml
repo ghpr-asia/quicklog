@@ -18,7 +18,6 @@ name = "derive"
 path = "tests/derive/derive.rs"
 
 [dependencies]
-quicklog-clock = { path = "../quicklog-clock", version = "0.1.3", registry = "ghp-cargo-local" }
 quicklog-flush = { path = "../quicklog-flush", version = "0.1.2", registry = "ghp-cargo-local" }
 quicklog-macros = { path = "../quicklog-macros", version = "0.1.1", registry = "ghp-cargo-local" }
 quanta = "0.11.1"

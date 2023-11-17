@@ -41,15 +41,6 @@ macro_rules! init {
     };
 }
 
-/// Used to amend which [`Clock`](quicklog_clock::Clock) implementor is
-/// currently attached to the global [`Quicklog`](crate::Quicklog) logger.
-#[macro_export]
-macro_rules! with_clock {
-    ($clock:expr) => {{
-        $crate::logger().use_clock(std::boxed::Box::new($clock))
-    }};
-}
-
 /// Checks if the current level we are trying to log is enabled
 #[doc(hidden)]
 #[macro_export]

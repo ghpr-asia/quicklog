@@ -76,7 +76,6 @@
 //! the user. This can be passed in through these macros, as long as the
 //! underlying struct implements the correct traits
 //!
-//! * [`with_clock!`]: Specify the Clock Quicklog uses
 //! * [`with_flush!`]: Specify the Flusher Quicklog uses
 //! * [`with_flush_into_file`]: Specify path to flush log lines into
 //!
@@ -158,32 +157,6 @@
 //!
 //! # Components
 //!
-//! ## quicklog-clock
-//!
-//! [`Clock`] is the trait for a clock that can be used with [`Quicklog`]. Clocks can
-//! be swapped out at runtime with a different implementation.
-//!
-//! This swap should be done at the init stage of your application to ensure
-//! that timings are consistent.
-//!
-//! ### Example
-//!
-//! ```ignore
-//! struct SomeClock;
-//!
-//! impl Clock for SomeClock { /* impl methods */ }
-//!
-//! fn main() {
-//!     init!();
-//!
-//!     with_clock!(SomeClock::new());
-//!
-//!     // logger now uses SomeClock for timestamping
-//!     info!("Hello, world!");
-//!     flush!();
-//! }
-//! ```
-//!
 //! ## quicklog-flush
 //!
 //! [`Flush`] is the trait that defines how the log messages would be flushed.
@@ -244,7 +217,6 @@ pub use ::bumpalo::collections::String as BumpString;
 
 use chrono::{DateTime, Utc};
 use constants::MAX_LOGGER_CAPACITY;
-use quicklog_clock::{quanta::QuantaClock, Clock};
 use quicklog_flush::{file_flusher::FileFlusher, Flush};
 
 pub use quicklog_macros::{debug, error, info, trace, warn, Serialize};
@@ -315,11 +287,32 @@ impl PatternFormatter for QuickLogFormatter {
     }
 }
 
+pub(crate) struct Clock {
+    anchor_time: DateTime<Utc>,
+    anchor_instant: Instant,
+}
+
+impl Clock {
+    fn compute_datetime(&self, now: Instant) -> DateTime<Utc> {
+        let duration = now - self.anchor_instant;
+        self.anchor_time + duration
+    }
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        Self {
+            anchor_time: Utc::now(),
+            anchor_instant: Instant::now(),
+        }
+    }
+}
+
 /// Main logging handler.
 pub struct Quicklog {
     flusher: Box<dyn Flush>,
-    clock: Box<dyn Clock>,
     formatter: Box<dyn PatternFormatter>,
+    clock: Clock,
     // TODO: see if we can avoid making this public
     pub sender: Producer,
     receiver: Consumer,
@@ -334,6 +327,10 @@ impl Quicklog {
         _ = logger();
     }
 
+    pub fn now() -> Instant {
+        Instant::now()
+    }
+
     /// Sets which flusher to be used, used in [`with_flush!`].
     #[doc(hidden)]
     pub fn use_flush(&mut self, flush: Box<dyn Flush>) {
@@ -343,18 +340,6 @@ impl Quicklog {
     /// Sets which flusher to be used, used in [`with_formatter!`].
     pub fn use_formatter(&mut self, formatter: Box<dyn PatternFormatter>) {
         self.formatter = formatter
-    }
-
-    /// Sets which clock to be used, used in [`with_clock!`].
-    #[doc(hidden)]
-    pub fn use_clock(&mut self, clock: Box<dyn Clock>) {
-        self.clock = clock
-    }
-
-    /// Retrieves current [Instant](quanta::Instant).
-    #[inline(always)]
-    pub fn now(&self) -> Instant {
-        self.clock.get_instant()
     }
 
     /// Flushes all arguments from the queue.
@@ -380,10 +365,7 @@ impl Quicklog {
                 break;
             };
 
-            let time = self
-                .clock
-                .compute_system_time_from_instant(&log_header.instant)
-                .expect("Unable to get time from Instant");
+            let time = self.clock.compute_datetime(log_header.instant);
             let formatted = match log_header.args_kind {
                 ArgsKind::AllSerialize(decode_fn) => {
                     let mut decoded_args = Vec::new();
@@ -465,11 +447,13 @@ impl Default for Quicklog {
     fn default() -> Self {
         const MAX_FMT_BUFFER_CAPACITY: usize = 1048576;
         let (sender, receiver) = Queue::new(MAX_LOGGER_CAPACITY);
+        // Force initialization of quanta global clock
+        _ = Instant::now();
 
         Quicklog {
             flusher: Box::new(FileFlusher::new("logs/quicklog.log")),
-            clock: Box::new(QuantaClock::new()),
             formatter: Box::new(QuickLogFormatter),
+            clock: Clock::default(),
             sender,
             receiver,
             fmt_buffer: Bump::with_capacity(MAX_FMT_BUFFER_CAPACITY),

@@ -50,7 +50,7 @@ impl Codegen {
             return Self {
                 prologue: quote! {
                     let mut logger = quicklog::logger();
-                    let now = logger.now();
+                    let now = quicklog::Quicklog::now();
                     let size = quicklog::queue::log_size_required(&[]);
                     let chunk = logger.sender.prepare_write(size)?;
                     let mut cursor = quicklog::queue::Cursor::new(chunk);
@@ -222,7 +222,7 @@ impl Codegen {
         // for writing to the queue
         let prologue = quote! {
             let mut logger = quicklog::logger();
-            let now = logger.now();
+            let now = quicklog::Quicklog::now();
             let fmt_buffer = &logger.fmt_buffer;
             #eager_fmt
             let size = #get_total_sizes;
