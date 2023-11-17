@@ -244,6 +244,40 @@ impl<T: Serialize> Serialize for &T {
     }
 }
 
+impl<T: Serialize> Serialize for Vec<T> {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
+        let (len_chunk, mut vec_chunk) = chunk.split_at_mut(SIZE_LENGTH);
+        len_chunk.copy_from_slice(&self.len().to_le_bytes());
+
+        for i in self {
+            (_, vec_chunk) = i.encode(vec_chunk);
+        }
+
+        (Store::new(Self::decode, chunk), rest)
+    }
+
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        let (len_chunk, mut chunk) = read_buf.split_at(SIZE_LENGTH);
+        let vec_len = usize::from_le_bytes(len_chunk.try_into().unwrap());
+
+        let mut vec = Vec::with_capacity(vec_len);
+        let mut decoded;
+        for _ in 0..vec_len {
+            // TODO(speed): very slow! should revisit whether really want `decode` to return
+            // String.
+            (decoded, chunk) = T::decode(chunk);
+            vec.push(decoded)
+        }
+
+        (format!("{:?}", vec), chunk)
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        self.get(0).map(|a| a.buffer_size_required()).unwrap_or(0) * self.len() + SIZE_LENGTH
+    }
+}
+
 /// Generates a format string with normal format specifiers for each value
 /// passed in. Intended for limited dynamic construction of format strings.
 ///
@@ -477,5 +511,14 @@ mod tests {
             ),
             format!("{}", store)
         );
+    }
+
+    #[test]
+    fn serialize_vec() {
+        let a = vec!["hello world", "bye world"];
+        let mut buf = [0; 256];
+        let (a_store, _) = a.encode(&mut buf);
+
+        assert_eq!(format!("{:?}", a), format!("{}", a_store));
     }
 }

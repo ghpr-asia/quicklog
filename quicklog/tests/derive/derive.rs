@@ -9,4 +9,5 @@ fn derive() {
     t.pass("tests/derive/derive_05.rs");
     t.pass("tests/derive/derive_06.rs");
     t.pass("tests/derive/derive_07.rs");
+    t.pass("tests/derive/derive_08.rs");
 }

@@ -1,4 +1,4 @@
-use quicklog::serialize::{Serialize, Store, SIZE_LENGTH};
+use quicklog::serialize::{Serialize, Store};
 
 #[macro_export]
 macro_rules! loop_with_cleanup {
@@ -61,41 +61,17 @@ pub(crate) struct Nested {
 
 impl Serialize for Nested {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
-        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-        let (len_chunk, mut vec_chunk) = chunk.split_at_mut(SIZE_LENGTH);
-
-        len_chunk.copy_from_slice(&self.vec.len().to_le_bytes());
-
-        for i in &self.vec {
-            (_, vec_chunk) = i.encode(vec_chunk);
-        }
-
-        (Store::new(Self::decode, chunk), rest)
+        self.vec.encode(write_buf)
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-        let (len_chunk, mut chunk) = read_buf.split_at(SIZE_LENGTH);
-        let vec_len = usize::from_le_bytes(len_chunk.try_into().unwrap());
+        let (vec, rest) = <Vec<BigStruct> as Serialize>::decode(read_buf);
 
-        let mut vec = Vec::with_capacity(vec_len);
-        let mut decoded;
-        for _ in 0..vec_len {
-            // TODO(speed): very slow! should revisit whether really want `decode` to return
-            // String.
-            (decoded, chunk) = BigStruct::decode(chunk);
-            vec.push(decoded)
-        }
-
-        (format!("Nested {{ vec: {:?} }}", vec), chunk)
+        (format!("Nested {{ vec: {:?} }}", vec), rest)
     }
 
     fn buffer_size_required(&self) -> usize {
-        self.vec
-            .get(0)
-            .map(|a| a.buffer_size_required())
-            .unwrap_or(0)
-            * self.vec.len()
-            + SIZE_LENGTH
+        self.vec.buffer_size_required()
     }
 }
 
