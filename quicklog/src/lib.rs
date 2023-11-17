@@ -238,7 +238,7 @@ use queue::{
     ArgsKind, Consumer, FlushError, FlushResult, LogArgType, LogHeader, Metadata, Producer, Queue,
     ReadError,
 };
-use serialize::{buffer::ByteBuffer, DecodeFn};
+use serialize::DecodeFn;
 
 pub use ::bumpalo::collections::String as BumpString;
 
@@ -323,7 +323,6 @@ pub struct Quicklog {
     // TODO: see if we can avoid making this public
     pub sender: Producer,
     receiver: Consumer,
-    byte_buffer: ByteBuffer,
     pub fmt_buffer: Bump,
 }
 
@@ -356,20 +355,6 @@ impl Quicklog {
     #[inline(always)]
     pub fn now(&self) -> Instant {
         self.clock.get_instant()
-    }
-
-    /// Internal API to get a chunk from buffer.
-    ///
-    /// <strong>DANGER</strong>
-    ///
-    /// In release, the [`TAIL`] wraps around back to the start of the buffer when
-    /// there isn't sufficient space left inside of [`BUFFER`]. If this happens,
-    /// the buffer might overwrite previous data with anything.
-    ///
-    /// In debug, the method panics when we reach the end of the buffer.
-    #[doc(hidden)]
-    pub fn get_chunk_as_mut(&mut self, chunk_size: usize) -> &mut [u8] {
-        self.byte_buffer.get_chunk_as_mut(chunk_size)
     }
 
     /// Flushes all arguments from the queue.
@@ -488,7 +473,6 @@ impl Default for Quicklog {
             sender,
             receiver,
             fmt_buffer: Bump::with_capacity(MAX_FMT_BUFFER_CAPACITY),
-            byte_buffer: ByteBuffer::new(),
         }
     }
 }

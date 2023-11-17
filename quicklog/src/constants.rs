@@ -2,6 +2,3 @@
 
 /// Sets max capacity of logging queue, can be set through env var `QUICKLOG_MAX_LOGGER_CAPACITY`.
 pub(crate) const MAX_LOGGER_CAPACITY: usize = 1048576;
-
-/// Sets max capacity of byte buffer used for serialization in logging, can be set through `QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY`.
-pub(crate) const MAX_SERIALIZE_BUFFER_CAPACITY: usize = 1000000;

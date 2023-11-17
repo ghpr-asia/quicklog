@@ -1,7 +1,5 @@
 use std::{fmt::Display, mem::size_of, str::from_utf8};
 
-pub mod buffer;
-
 /// Allows specification of a custom way to serialize the Struct.
 ///
 /// This is the key trait to implement to improve logging performance. While

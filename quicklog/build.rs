@@ -26,18 +26,6 @@ fn parse_value_from_config_with_default<T: FromStr>(
 }
 
 fn main() {
-    println!("cargo:rerun-if-env-changed=QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY");
-    let max_buffer_capacity = match parse_value_from_config_with_default(
-        "QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY",
-        Some(1_000_000_usize),
-    ) {
-        Ok(val) => val,
-        Err(err) => {
-            println!("cargo:warning={}", err);
-            1_000_000
-        }
-    };
-
     println!("cargo:rerun-if-env-changed=QUICKLOG_MAX_LOGGER_CAPACITY");
     let max_logger_capacity = match parse_value_from_config_with_default(
         "QUICKLOG_MAX_LOGGER_CAPACITY",
@@ -56,11 +44,8 @@ fn main() {
 
 /// Sets max capacity of logging queue, can be set through env var `QUICKLOG_MAX_LOGGER_CAPACITY`.
 pub(crate) const MAX_LOGGER_CAPACITY: usize = {};
-
-/// Sets max capacity of byte buffer used for serialization in logging, can be set through `QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY`.
-pub(crate) const MAX_SERIALIZE_BUFFER_CAPACITY: usize = {};
 ",
-        max_logger_capacity, max_buffer_capacity
+        max_logger_capacity
     );
 
     // Write the code to a file
