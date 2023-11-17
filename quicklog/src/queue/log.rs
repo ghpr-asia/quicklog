@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 use quanta::Instant;
 
-use crate::{level::Level, utils::any_as_bytes};
+use crate::{level::Level, serialize::DecodeEachFn, utils::any_as_bytes};
 
 use super::{ChunkRead, ChunkWrite, ReadError, ReadResult};
 
@@ -22,16 +22,20 @@ pub enum FlushError {
 
 /// The type of arguments found in the log record.
 #[derive(Debug, PartialEq, Eq)]
+#[repr(usize)]
+#[repr(C)]
 pub enum ArgsKind {
     /// All arguments implement [`Serialize`](crate::serialize::Serialize).
     ///
     /// This is the optimized case emitted by the logging macro, indicating that
     /// all the arguments have been packed into a single tuple argument (and
     /// should be unpacked accordingly on the receiving end).
-    AllSerialize,
+    AllSerialize(DecodeEachFn) = 1,
     /// Mix of formatting arguments and arguments implementing
     /// [`Serialize`](crate::serialize::Serialize).
-    Normal(usize),
+    ///
+    /// Contains the number of arguments.
+    Normal(usize) = 2,
 }
 
 /// Information related to each macro callsite.
@@ -42,7 +46,6 @@ pub struct Metadata {
     pub line: u32,
     pub level: Level,
     pub format_str: &'static str,
-    pub args_kind: ArgsKind,
 }
 
 impl Metadata {
@@ -53,7 +56,6 @@ impl Metadata {
         line: u32,
         level: Level,
         format_str: &'static str,
-        args_kind: ArgsKind,
     ) -> Self {
         Self {
             module_path,
@@ -61,7 +63,6 @@ impl Metadata {
             line,
             level,
             format_str,
-            args_kind,
         }
     }
 }
@@ -110,18 +111,24 @@ impl ChunkRead for LogArgType {
 pub struct LogHeader<'a> {
     pub(crate) metadata: &'a Metadata,
     pub(crate) instant: Instant,
+    pub(crate) args_kind: ArgsKind,
 }
 
 impl<'a> LogHeader<'a> {
-    pub fn new(metadata: &'a Metadata, instant: Instant) -> Self {
-        Self { metadata, instant }
+    pub fn new(metadata: &'a Metadata, instant: Instant, args_kind: ArgsKind) -> Self {
+        Self {
+            metadata,
+            instant,
+            args_kind,
+        }
     }
 }
 
 impl ChunkRead for LogHeader<'_> {
     fn read(buf: &[u8]) -> ReadResult<Self> {
         let (header_chunk, _) = buf.split_at(<Self as ChunkRead>::bytes_required());
-        let (metadata_chunk, timestamp_chunk) = header_chunk.split_at(size_of::<&Metadata>());
+        let (metadata_chunk, header_rest) = header_chunk.split_at(size_of::<&Metadata>());
+        let (timestamp_chunk, args_kind_chunk) = header_rest.split_at(size_of::<Instant>());
 
         let metadata: &Metadata = unsafe {
             &*(usize::from_le_bytes(metadata_chunk.try_into().unwrap()) as *const Metadata)
@@ -129,7 +136,27 @@ impl ChunkRead for LogHeader<'_> {
         let instant_bytes: [u8; size_of::<Instant>()] = timestamp_chunk.try_into().unwrap();
         let instant: Instant = unsafe { std::mem::transmute(instant_bytes) };
 
-        Ok(LogHeader { metadata, instant })
+        let (args_kind_tag_chunk, args_kind_payload_chunk) =
+            args_kind_chunk.split_at(size_of::<usize>());
+        let args_kind = match usize::from_le_bytes(args_kind_tag_chunk.try_into().unwrap()) {
+            1 => {
+                let decode_fn = DecodeEachFn::read(args_kind_payload_chunk)?;
+
+                ArgsKind::AllSerialize(decode_fn)
+            }
+            2 => {
+                let num_args = usize::read(args_kind_payload_chunk)?;
+
+                ArgsKind::Normal(num_args)
+            }
+            _ => return Err(ReadError::UnexpectedValue),
+        };
+
+        Ok(LogHeader {
+            metadata,
+            instant,
+            args_kind,
+        })
     }
 
     fn bytes_required() -> usize {
@@ -192,4 +219,20 @@ impl ChunkWrite for FmtArgHeader {
     fn bytes_required(&self) -> usize {
         size_of::<Self>()
     }
+}
+
+/// Computes overall size required for writing a log record.
+pub fn log_size_required(args: &[(LogArgType, usize)]) -> usize {
+    let mut size_required = 0;
+    size_required += size_of::<LogHeader>();
+
+    for (arg_type, arg_size) in args {
+        size_required += match arg_type {
+            LogArgType::Fmt => size_of::<FmtArgHeader>(),
+            LogArgType::Serialize => size_of::<SerializeArgHeader>(),
+        };
+        size_required += arg_size;
+    }
+
+    size_required
 }

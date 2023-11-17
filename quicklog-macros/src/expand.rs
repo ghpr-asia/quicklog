@@ -1,13 +1,29 @@
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
-use quote::{quote, ToTokens};
+use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
+use quote::quote;
 use syn::parse_macro_input;
 
 use crate::args::{Args, PrefixedArg, PrefixedField};
-use crate::format_arg::FormatArg;
 use crate::Level;
 
+struct IdentGen(Vec<Ident>);
+
+impl IdentGen {
+    const fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    fn gen(&mut self) -> &Ident {
+        let idx = self.0.len();
+        let ident = Ident::new(&"x".repeat(idx + 1), Span::call_site());
+        self.0.push(ident);
+
+        self.0.last().unwrap()
+    }
+}
+
 struct Codegen {
+    prologue: TokenStream2,
     fmt_args: TokenStream2,
     metadata: TokenStream2,
     prefixed_args: TokenStream2,
@@ -15,6 +31,46 @@ struct Codegen {
 
 impl Codegen {
     fn new(args: &Args, level: &Level) -> Self {
+        if args.prefixed_fields.is_empty() && args.formatting_args.is_empty() {
+            let fmt_str = args
+                .format_string
+                .as_ref()
+                .map(|s| s.value())
+                .unwrap_or_else(String::new);
+            let metadata = quote! {
+                static META: quicklog::queue::Metadata = quicklog::queue::Metadata::new(
+                    std::module_path!(),
+                    std::file!(),
+                    std::line!(),
+                    #level,
+                    #fmt_str,
+                );
+            };
+
+            return Self {
+                prologue: quote! {
+                    let mut logger = quicklog::logger();
+                    let now = logger.now();
+                    let size = quicklog::queue::log_size_required(&[]);
+                    let chunk = logger.sender.prepare_write(size)?;
+                    let mut cursor = quicklog::queue::Cursor::new(chunk);
+
+                    let header = quicklog::queue::LogHeader::new(&META, now, quicklog::queue::ArgsKind::Normal(0));
+                    cursor.write(&header)?;
+                },
+                metadata,
+                fmt_args: quote! {},
+                prefixed_args: quote! {},
+            };
+        }
+
+        let mut ident_gen = IdentGen::new();
+        // Check if we need to format the format string and format arguments
+        //
+        // If there are format arguments or the format string has format
+        // specifiers (might be named captures), then we need to format it.
+        // Otherwise, we can just pass the format string along with `Metadata`
+        // and avoid one formatting operation.
         let original_fmt_str = args
             .format_string
             .as_ref()
@@ -22,50 +78,129 @@ impl Codegen {
             .unwrap_or_else(String::new);
         let has_fmt_args = !args.formatting_args.is_empty();
         let need_write_fmt_str = has_fmt_args || has_fmt_specifiers(original_fmt_str.as_str());
-
-        // If there are format arguments or the format string has format specifiers
-        // (might be named captures), then we need to format it. Otherwise, we
-        // can just pass the format string along with `Metadata` and avoid one
-        // formatting operation.
-        let (args_kind, fmt_args_write, prefixed_args_write, mut fmt_str) = if need_write_fmt_str {
+        let (fmt_args_alloc, fmt_args_write, mut fmt_str) = if need_write_fmt_str {
             let fmt_args = if has_fmt_args {
                 let args = &args.formatting_args;
                 quote! { , #args }
             } else {
                 quote! {}
             };
+            let ident = ident_gen.gen();
 
             // Entire format string + format args are wrapped into one argument
-            let num_args = args.prefixed_fields.len() + 1;
             (
-                quote! { quicklog::queue::ArgsKind::Normal(#num_args) },
-                quote! { cursor.write_fmt(fmt_buffer, format_args!(#original_fmt_str #fmt_args))?; },
-                args.prefixed_fields.iter().map(gen_write_field).collect(),
+                quote! {
+                    let #ident = quicklog::str_format!(fmt_buffer, #original_fmt_str #fmt_args);
+                },
+                quote! { cursor.write_str(#ident)?; },
                 "{}".to_string(),
             )
         } else {
-            let all_serialize = !args.prefixed_fields.is_empty()
-                && args.prefixed_fields.iter().all(PrefixedField::is_serialize);
-            let (args_kind, prefixed_args_write) = if all_serialize {
-                // Special optimization if all arguments use `Serialize` impl and
-                // no need to write format string
-                let args: Vec<_> = args.prefixed_fields.iter().map(|f| f.arg()).collect();
+            (quote! {}, quote! {}, original_fmt_str)
+        };
 
-                (
-                    quote! { quicklog::queue::ArgsKind::AllSerialize },
-                    quote! {
-                        cursor.write_serialize_tpl(&(#(&#args,)*))?;
+        // Format all prefixed args that needs to be eagerly formatted
+        let prefixed_args_alloc: Vec<_> = args
+            .prefixed_fields
+            .iter()
+            .filter_map(|f| {
+                if !f.is_serialize() {
+                    let arg = f.arg();
+                    let formatter = f.formatter();
+                    let ident = ident_gen.gen();
+                    Some(quote! {
+                        let #ident = quicklog::str_format!(fmt_buffer, #formatter, #arg);
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let eager_fmt = quote! {
+            #fmt_args_alloc
+            #(#prefixed_args_alloc)*
+        };
+
+        // After formatting, we just need to compute the required sizes for
+        // Serialize args, and then we will know how much space we need from the
+        // queue
+        let fmt_idents = &ident_gen.0;
+        let all_serialize = fmt_idents.is_empty();
+        let get_total_sizes = (|| {
+            let mut arg_sizes = Vec::new();
+
+            if all_serialize {
+                let serialize_args: Vec<_> = args.prefixed_fields.iter().map(|f| f.arg()).collect();
+                return quote! {  quicklog::queue::log_size_required(&[]) + (#(&#serialize_args,)*).buffer_size_required() };
+            }
+
+            for ident in fmt_idents {
+                arg_sizes.push(quote! { (quicklog::queue::LogArgType::Fmt, #ident.len()) });
+            }
+
+            for arg in args.prefixed_fields.iter().filter_map(|f| {
+                if f.is_serialize() {
+                    Some(f.arg())
+                } else {
+                    None
+                }
+            }) {
+                arg_sizes.push(
+                    quote! { (quicklog::queue::LogArgType::Serialize, #arg.buffer_size_required())},
+                );
+            }
+
+            quote! { quicklog::queue::log_size_required(&[#(#arg_sizes),*]) }
+        })();
+
+        // Proceed with writing to the queue
+        let (args_kind, prefixed_args_write): (TokenStream2, TokenStream2) = if all_serialize {
+            // Optimized case: all arguments are `Serialize`. We skip writing
+            // the argument header
+            let args: Vec<_> = args
+                .prefixed_fields
+                .iter()
+                .map(PrefixedField::arg)
+                .collect();
+            let args_kind =
+                quote! { quicklog::queue::ArgsKind::AllSerialize(_decode_fn(&(#(&#args,)*))) };
+            let write = quote! { cursor.write(&(#(&#args,)*))?; };
+
+            (args_kind, write)
+        } else {
+            // Normal case: mix of `Serialize` and `Debug`/`Display`
+            let num_args =
+                args.prefixed_fields.len() + need_write_fmt_str.then_some(1).unwrap_or_default();
+            let args_kind = quote! { quicklog::queue::ArgsKind::Normal(#num_args) };
+
+            let mut ident_iter = fmt_idents.iter();
+            if need_write_fmt_str {
+                // First ident is fmt args, second onwards is prefixed args
+                _ = ident_iter.next();
+            }
+
+            let write = args
+                .prefixed_fields
+                .iter()
+                .filter_map(|field| match field {
+                    PrefixedField::Unnamed(i) => match i {
+                        PrefixedArg::Debug(_) | PrefixedArg::Display(_) => {
+                            let ident = ident_iter.next()?;
+                            Some(quote! { cursor.write_str(#ident)?; })
+                        }
+                        PrefixedArg::Serialize(a) => Some(quote! { cursor.write_serialize(&#a)?; }),
                     },
-                )
-            } else {
-                let num_args = args.prefixed_fields.len();
-                (
-                    quote! { quicklog::queue::ArgsKind::Normal(#num_args) },
-                    args.prefixed_fields.iter().map(gen_write_field).collect(),
-                )
-            };
+                    PrefixedField::Named(f) => match &f.arg {
+                        PrefixedArg::Debug(_) | PrefixedArg::Display(_) => {
+                            let ident = ident_iter.next()?;
+                            Some(quote! { cursor.write_str(#ident)?; })
+                        }
+                        PrefixedArg::Serialize(a) => Some(quote! { cursor.write_serialize(&#a)?; }),
+                    },
+                })
+                .collect();
 
-            (args_kind, quote! {}, prefixed_args_write, original_fmt_str)
+            (args_kind, write)
         };
 
         // Construct format string for prefixed fields and append to original
@@ -83,6 +218,22 @@ impl Codegen {
             }
         }
 
+        // Logging initializing steps: acquire logger and prepare all buffers
+        // for writing to the queue
+        let prologue = quote! {
+            let mut logger = quicklog::logger();
+            let now = logger.now();
+            let fmt_buffer = &logger.fmt_buffer;
+            #eager_fmt
+            let size = #get_total_sizes;
+            let chunk = logger.sender.prepare_write(size)?;
+            let mut cursor = quicklog::queue::Cursor::new(chunk);
+
+            let header = quicklog::queue::LogHeader::new(&META, now, #args_kind);
+            cursor.write(&header)?;
+        };
+
+        // Metadata construction
         let metadata_write = quote! {
             static META: quicklog::queue::Metadata = quicklog::queue::Metadata::new(
                 std::module_path!(),
@@ -90,11 +241,11 @@ impl Codegen {
                 std::line!(),
                 #level,
                 #fmt_str,
-                #args_kind,
             );
         };
 
         Self {
+            prologue,
             fmt_args: fmt_args_write,
             metadata: metadata_write,
             prefixed_args: prefixed_args_write,
@@ -125,26 +276,6 @@ fn has_fmt_specifiers(fmt_str: &str) -> bool {
     false
 }
 
-/// Codegen for writing of prefixed fields to the buffer.
-fn gen_write_field(prefixed_field: &PrefixedField) -> TokenStream2 {
-    fn gen_write_arg<T: ToTokens>(arg: &PrefixedArg<T>) -> TokenStream2 {
-        let formatter = arg.formatter();
-        match arg {
-            PrefixedArg::Debug(a) | PrefixedArg::Display(a) => {
-                quote! { cursor.write_fmt(fmt_buffer, format_args!(#formatter, &#a))?; }
-            }
-            PrefixedArg::Serialize(a) => {
-                quote! { cursor.write_serialize(&#a)?; }
-            }
-        }
-    }
-
-    match prefixed_field {
-        PrefixedField::Unnamed(ident) => gen_write_arg(ident),
-        PrefixedField::Named(field) => gen_write_arg(&field.arg),
-    }
-}
-
 /// Parses token stream into the different components of `Args` and
 /// generates required tokens from the inputs
 pub(crate) fn expand(level: Level, input: TokenStream) -> TokenStream {
@@ -154,6 +285,7 @@ pub(crate) fn expand(level: Level, input: TokenStream) -> TokenStream {
 /// Main function for expanding the components parsed from the macro call
 pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
     let Codegen {
+        prologue,
         prefixed_args,
         fmt_args,
         metadata,
@@ -165,22 +297,20 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
 
             #metadata
 
-            (|| {
-                let mut logger = quicklog::logger();
-                let now = logger.now();
-                let (mut chunk, fmt_buffer) = logger.prepare_write();
-                let (first, second) = chunk.as_mut_slices();
-                let mut cursor = quicklog::queue::CursorMut::new(first, second);
+            #[inline(always)]
+            fn _decode_fn<T: quicklog::serialize::SerializeTpl>(_a: &T) -> quicklog::serialize::DecodeEachFn {
+                T::decode_each
+            }
 
-                let header = quicklog::queue::LogHeader::new(&META, now);
-                cursor.write(&header)?;
+            (|| {
+                #prologue
 
                 #fmt_args
 
                 #prefixed_args
 
                 let commit_size = cursor.finish();
-                quicklog::Quicklog::finish_write(chunk, commit_size);
+                logger.finish_and_commit(commit_size);
 
                 Ok::<(), quicklog::queue::WriteError>(())
             })()

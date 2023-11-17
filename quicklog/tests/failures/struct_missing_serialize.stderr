@@ -1,3 +1,14 @@
+error[E0599]: the method `buffer_size_required` exists for tuple `(&A,)`, but its trait bounds were not satisfied
+  --> tests/failures/struct_missing_serialize.rs:14:5
+   |
+14 |     info!(s1, "struct does not implement Serialize");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method cannot be called on `(&A,)` due to unsatisfied trait bounds
+   |
+   = note: the following trait bounds were not satisfied:
+           `&A: quicklog::serialize::Serialize`
+           which is required by `(&A,): quicklog::serialize::Serialize`
+   = note: this error originates in the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)
+
 error[E0277]: the trait bound `A: quicklog::serialize::Serialize` is not satisfied
   --> tests/failures/struct_missing_serialize.rs:14:5
    |
@@ -16,9 +27,9 @@ error[E0277]: the trait bound `A: quicklog::serialize::Serialize` is not satisfi
            and $N others
    = note: required for `&A` to implement `quicklog::serialize::Serialize`
    = note: required for `(&A,)` to implement `SerializeTpl`
-note: required by a bound in `quicklog::queue::CursorMut::<'buf>::write_serialize_tpl`
-  --> src/queue/chunk.rs
+note: required by a bound in `_decode_fn`
+  --> tests/failures/struct_missing_serialize.rs:14:5
    |
-   |     pub fn write_serialize_tpl<T: SerializeTpl>(&mut self, arg: &T) -> WriteResult<()> {
-   |                                   ^^^^^^^^^^^^ required by this bound in `CursorMut::<'buf>::write_serialize_tpl`
+14 |     info!(s1, "struct does not implement Serialize");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `_decode_fn`
    = note: this error originates in the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -1,11 +1,8 @@
-use std::{
-    fmt::{Arguments, Write},
-    mem::{size_of, MaybeUninit},
-};
+use std::mem::size_of;
 
 use crate::{
-    serialize::{DecodeEachFn, DecodeFn, Serialize, SerializeTpl},
-    utils::likely,
+    serialize::{DecodeEachFn, DecodeFn, Serialize},
+    utils::unlikely,
 };
 
 use super::{FlushError, FmtArgHeader, LogArgType, SerializeArgHeader};
@@ -124,7 +121,7 @@ impl From<ReadError> for FlushError {
     }
 }
 
-/// Error advancing [`CursorRef`] or [`CursorMut`] through the queue.
+/// Error advancing [`Cursor`] through the queue.
 pub enum CursorError {
     /// Queue does not have any space left to advance through.
     NoSpaceLeft,
@@ -138,67 +135,27 @@ impl From<CursorError> for ReadError {
     }
 }
 
-/// Similar to [`std::io::Cursor`], but manages reading from up to two buffers.
-///
-/// For the main read operations, if the head slice does not have enough
-/// remaining capacity to reconstruct the type, then it moves on to the next
-/// slice and continues parsing. Once this happens, subsequent reads made via
-/// this cursor instance will read from this second slice.
-pub struct CursorRef<'buf> {
-    head: &'buf [u8],
-    tail: Option<&'buf [u8]>,
+/// Similar to [`std::io::Cursor`], but we implement our own methods to aid in
+/// writing structured data to the buffer.
+pub struct Cursor<T> {
+    inner: T,
+    pos: usize,
 }
 
-impl<'buf> CursorRef<'buf> {
-    pub fn new(head: &'buf [u8], tail: &'buf [u8]) -> Self {
-        CursorRef {
-            head,
-            tail: Some(tail),
-        }
+impl<T> Cursor<T> {
+    pub fn new(inner: T) -> Self {
+        Self { inner, pos: 0 }
     }
 
-    /// Reconstructs a type implementing [`ChunkRead`] by reading through
-    /// the underlying buffer(s).
-    pub fn read<T: ChunkRead>(&mut self) -> ReadResult<T> {
-        let required_size = T::bytes_required();
-        if likely(self.head.len() >= required_size) {
-            let result = T::read(self.head)?;
-            self.head = &self.head[required_size..];
-
-            Ok(result)
-        } else {
-            match self.advance(required_size) {
-                Ok(()) => {
-                    let result = T::read(self.head)?;
-                    self.head = &self.head[required_size..];
-
-                    Ok(result)
-                }
-                Err(e) => Err(e.into()),
-            }
-        }
+    pub fn finish(self) -> usize {
+        self.pos
     }
+}
 
-    /// Reads `n` bytes from the underlying buffer(s), and returns a slice
-    /// if there is enough capacity.
-    pub fn read_bytes(&mut self, n: usize) -> ReadResult<&[u8]> {
-        if likely(self.head.len() >= n) {
-            let (chunk, rest) = self.head.split_at(n);
-            self.head = rest;
-            Ok(chunk)
-        } else {
-            match self.advance(n) {
-                Ok(()) => {
-                    let (chunk, rest) = self.head.split_at(n);
-                    self.head = rest;
-
-                    Ok(chunk)
-                }
-                Err(e) => Err(e.into()),
-            }
-        }
-    }
-
+impl<T> Cursor<T>
+where
+    T: AsRef<[u8]>,
+{
     /// Whether there are remaining bytes to read.
     pub fn is_empty(&self) -> bool {
         self.remaining_size() == 0
@@ -206,53 +163,63 @@ impl<'buf> CursorRef<'buf> {
 
     /// Remaining bytes to read.
     pub fn remaining_size(&self) -> usize {
-        self.head.len() + self.tail.as_ref().map(|t| t.len()).unwrap_or(0)
+        self.inner.as_ref().len() - self.pos
     }
 
-    /// Moves to read from the second underlying buffer, if there is at least
-    /// `n` capacity. Otherwise, it means the top-level requested read is not
-    /// successful, since we have reached the end of both buffers.
-    #[inline]
-    fn advance(&mut self, n: usize) -> Result<(), CursorError> {
-        match &self.tail {
-            Some(t) if t.len() >= n => {
-                self.head = self.tail.take().unwrap();
-                Ok(())
-            }
-            _ => Err(CursorError::NoSpaceLeft),
-        }
-    }
-}
-
-/// Similar to [`std::io::Cursor`], but manages writing to up to two buffers.
-///
-/// For the main write operations, if the head slice does not have enough
-/// remaining capacity to reconstruct the type, then it moves on to the next
-/// slice and continues writing. Once this happens, subsequent writes made via
-/// this cursor instance will write to this second slice.
-pub struct CursorMut<'buf> {
-    head: &'buf mut [u8],
-    tail: Option<&'buf mut [u8]>,
-    written: usize,
-}
-
-impl<'buf> CursorMut<'buf> {
-    pub fn new(head: &'buf mut [MaybeUninit<u8>], tail: &'buf mut [MaybeUninit<u8>]) -> Self {
-        // Eventually we will be overwriting the slices and committing the
-        // written bytes, so just assume initialized here
-        let (head, tail) = unsafe {
-            (
-                std::slice::from_raw_parts_mut(head.as_mut_ptr().cast(), head.len()),
-                std::slice::from_raw_parts_mut(tail.as_mut_ptr().cast(), tail.len()),
-            )
+    /// Reconstructs a type implementing [`ChunkRead`] by reading through the
+    /// underlying buffer(s).
+    pub fn read<C: ChunkRead>(&mut self) -> ReadResult<C> {
+        let required_size = C::bytes_required();
+        let inner = self.inner.as_ref();
+        let buf = {
+            let len = self.pos.min(inner.len());
+            &inner[len..]
         };
-        CursorMut {
-            head,
-            tail: Some(tail),
-            written: 0,
+        if unlikely(buf.len() < required_size) {
+            return Err(ReadError::NotEnoughBytes);
         }
+
+        let res = C::read(buf)?;
+        self.pos += required_size;
+
+        Ok(res)
     }
 
+    /// Reads `n` bytes from the underlying buffer(s), and returns a slice if
+    /// there is enough capacity.
+    pub fn read_bytes(&mut self, n: usize) -> ReadResult<&[u8]> {
+        let inner = self.inner.as_ref();
+        let buf = {
+            let len = self.pos.min(inner.len());
+            &inner[len..]
+        };
+        if unlikely(buf.len() < n) {
+            return Err(ReadError::NotEnoughBytes);
+        }
+        let res = unsafe { buf.get_unchecked(..n) };
+        self.pos += n;
+
+        Ok(res)
+    }
+
+    pub fn read_decode_each(
+        &mut self,
+        decode_fn: DecodeEachFn,
+        out: &mut Vec<String>,
+    ) -> ReadResult<()> {
+        let inner = self.inner.as_ref();
+        let buf = {
+            let len = self.pos.min(inner.len());
+            &inner[len..]
+        };
+        let rest = decode_fn(buf, out);
+        self.pos += buf.len() - rest.len();
+
+        Ok(())
+    }
+}
+
+impl Cursor<&mut [u8]> {
     /// Writes an argument implementing [`Serialize`], along with its header.
     pub fn write_serialize<T: Serialize>(&mut self, arg: &T) -> WriteResult<()> {
         let header = SerializeArgHeader {
@@ -264,31 +231,15 @@ impl<'buf> CursorMut<'buf> {
         self.write(arg)
     }
 
-    /// Same as [`write_serialize`], but assumes that the
-    /// argument is a packed tuple of >= 1 arguments implementing
-    /// [`Serialize`](crate::serialize::Serialize).
-    pub fn write_serialize_tpl<T: SerializeTpl>(&mut self, arg: &T) -> WriteResult<()> {
-        let header = SerializeArgHeader {
-            type_of_arg: LogArgType::Serialize,
-            size_of_arg: arg.buffer_size_required(),
-            decode_fn: <T as SerializeTpl>::decode_each as usize,
-        };
-        self.write(&header)?;
-        self.write(arg)
-    }
-
-    /// Writes a validated format [`Arguments`], along with its header.
-    pub fn write_fmt(&mut self, fmt_buffer: &mut String, arg: Arguments<'_>) -> WriteResult<()> {
-        // Unwrap: String automatically resizes if needed, so shouldn't
-        // fail while formatting
-        write!(fmt_buffer, "{}", arg).unwrap();
+    /// Writes a formatted string along with its header.
+    pub fn write_str(&mut self, s: impl AsRef<str>) -> WriteResult<()> {
+        let formatted = s.as_ref();
         let header = FmtArgHeader {
             type_of_arg: LogArgType::Fmt,
-            size_of_arg: fmt_buffer.len(),
+            size_of_arg: formatted.len(),
         };
         self.write(&header)?;
-        self.write(&fmt_buffer.as_bytes())?;
-        fmt_buffer.clear();
+        self.write(&formatted.as_bytes())?;
 
         Ok(())
     }
@@ -297,46 +248,19 @@ impl<'buf> CursorMut<'buf> {
     /// underlying buffer(s).
     pub fn write<T: ChunkWrite>(&mut self, arg: &T) -> WriteResult<()> {
         let required_size = arg.bytes_required();
-        if likely(self.head.len() >= required_size) {
-            let written = arg.write(self.head);
-            let head = std::mem::take(&mut self.head);
-            self.head = &mut head[written..];
-            self.written += written;
-
-            Ok(())
-        } else {
-            match self.advance(required_size) {
-                Ok(()) => {
-                    let written = arg.write(self.head);
-                    let head = std::mem::take(&mut self.head);
-                    self.head = &mut head[written..];
-                    self.written += written;
-
-                    Ok(())
-                }
-                Err(_) => Err(WriteError::NotEnoughSpace),
-            }
+        let buf = self.remaining_slice();
+        if unlikely(buf.len() < required_size) {
+            return Err(WriteError::NotEnoughSpace);
         }
+
+        let written = arg.write(buf);
+        self.pos += written;
+        Ok(())
     }
 
-    /// Consumes the cursor and returns the number of bytes written.
-    pub fn finish(self) -> usize {
-        self.written
-    }
-
-    /// Moves to write to the second underlying buffer, if there is at least
-    /// `n` capacity. Otherwise, it means the top-level requested write is not
-    /// successful, since we have reached the end of both buffers.
     #[inline]
-    fn advance(&mut self, n: usize) -> Result<(), CursorError> {
-        match &self.tail {
-            Some(t) if t.len() >= n => {
-                // Assume that remainder of head is now invalid
-                self.written += self.head.len();
-                self.head = self.tail.take().unwrap();
-                Ok(())
-            }
-            _ => Err(CursorError::NoSpaceLeft),
-        }
+    pub fn remaining_slice(&mut self) -> &mut [u8] {
+        let len = self.pos.min(self.inner.len());
+        &mut self.inner[len..]
     }
 }

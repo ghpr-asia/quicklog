@@ -229,18 +229,18 @@ mod constants;
 /// Utility functions.
 mod utils;
 
+use bumpalo::Bump;
 use dyn_fmt::AsStrFormatExt;
 use once_cell::unsync::Lazy;
 use quanta::Instant;
+use queue::Cursor;
 use queue::{
-    receiver::Receiver, sender::Sender, ArgsKind, CursorRef, FlushError, FlushResult, LogArgType,
-    LogHeader, Metadata, ReadError,
+    ArgsKind, Consumer, FlushError, FlushResult, LogArgType, LogHeader, Metadata, Producer, Queue,
+    ReadError,
 };
-use rtrb::{chunks::WriteChunkUninit, RingBuffer};
-use serialize::{buffer::ByteBuffer, DecodeEachFn, DecodeFn};
+use serialize::{buffer::ByteBuffer, DecodeFn};
 
-pub use ::lazy_format;
-pub use std::{file, line, module_path};
+pub use ::bumpalo::collections::String as BumpString;
 
 use chrono::{DateTime, Utc};
 use constants::MAX_LOGGER_CAPACITY;
@@ -320,10 +320,11 @@ pub struct Quicklog {
     flusher: Box<dyn Flush>,
     clock: Box<dyn Clock>,
     formatter: Box<dyn PatternFormatter>,
-    sender: Sender,
-    receiver: Receiver,
-    fmt_buffer: String,
+    // TODO: see if we can avoid making this public
+    pub sender: Producer,
+    receiver: Consumer,
     byte_buffer: ByteBuffer,
+    pub fmt_buffer: Bump,
 }
 
 impl Quicklog {
@@ -382,13 +383,11 @@ impl Quicklog {
     /// In the event of parsing failure, the flushing is terminated without
     /// committing.
     pub fn flush(&mut self) -> FlushResult {
-        let chunk = self.receiver.read_chunk()?;
-        let (head, tail) = chunk.as_slices();
-        let mut cursor = CursorRef::new(head, tail);
-
-        if cursor.is_empty() {
-            return Err(FlushError::Empty);
-        }
+        let chunk = self
+            .receiver
+            .prepare_read()
+            .map_err(|_| FlushError::Empty)?;
+        let mut cursor = Cursor::new(chunk);
 
         loop {
             // Parse header for entire log message
@@ -400,15 +399,10 @@ impl Quicklog {
                 .clock
                 .compute_system_time_from_instant(&log_header.instant)
                 .expect("Unable to get time from Instant");
-            let formatted = match log_header.metadata.args_kind {
-                ArgsKind::AllSerialize => {
+            let formatted = match log_header.args_kind {
+                ArgsKind::AllSerialize(decode_fn) => {
                     let mut decoded_args = Vec::new();
-                    _ = cursor.read::<LogArgType>()?;
-                    let size_of_arg = cursor.read::<usize>()?;
-                    let decode_fn = cursor.read::<DecodeEachFn>()?;
-                    let arg_chunk = cursor.read_bytes(size_of_arg)?;
-
-                    _ = decode_fn(arg_chunk, &mut decoded_args);
+                    cursor.read_decode_each(decode_fn, &mut decoded_args)?;
 
                     log_header.metadata.format_str.format(&decoded_args)
                 }
@@ -457,37 +451,43 @@ impl Quicklog {
             self.flusher.flush_one(log_line);
         }
 
-        chunk.commit_all();
+        let read = cursor.finish();
+        self.receiver.finish_read(read);
+        self.receiver.commit_read();
 
         Ok(())
     }
 
-    /// Returns chunks/buffers for writing to.
-    pub fn prepare_write(&mut self) -> (WriteChunkUninit<'_, u8>, &mut String) {
-        let chunk = self.sender.write_chunk().expect("queue full");
-        let buf = &mut self.fmt_buffer;
-
-        (chunk, buf)
+    /// Marks write as complete and commits it for reading.
+    pub fn finish_and_commit(&mut self, n: usize) {
+        self.finish_write(n);
+        self.commit_write();
     }
 
-    /// Consumes a previously obtained write chunk and commits the written
-    /// slots, making them available for reading.
-    pub fn finish_write(chunk: WriteChunkUninit<'_, u8>, committed: usize) {
-        unsafe { chunk.commit(committed) }
+    /// Marks write as complete by advancing local writer.
+    pub fn finish_write(&mut self, n: usize) {
+        self.fmt_buffer.reset();
+        self.sender.finish_write(n);
+    }
+
+    /// Commits all uncommitted writes to make slots available for reading.
+    pub fn commit_write(&mut self) {
+        self.sender.commit_write();
     }
 }
 
 impl Default for Quicklog {
     fn default() -> Self {
-        let (sender, receiver) = RingBuffer::<u8>::new(MAX_LOGGER_CAPACITY);
+        const MAX_FMT_BUFFER_CAPACITY: usize = 1048576;
+        let (sender, receiver) = Queue::new(MAX_LOGGER_CAPACITY);
 
         Quicklog {
             flusher: Box::new(FileFlusher::new("logs/quicklog.log")),
             clock: Box::new(QuantaClock::new()),
             formatter: Box::new(QuickLogFormatter),
-            sender: Sender(sender),
-            receiver: Receiver(receiver),
-            fmt_buffer: String::with_capacity(2048),
+            sender,
+            receiver,
+            fmt_buffer: Bump::with_capacity(MAX_FMT_BUFFER_CAPACITY),
             byte_buffer: ByteBuffer::new(),
         }
     }

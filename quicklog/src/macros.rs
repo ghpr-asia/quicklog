@@ -69,3 +69,21 @@ macro_rules! flush {
         $crate::logger().flush().unwrap();
     };
 }
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! str_format {
+    ($in:expr, $fmt_str:expr, $($args:tt)*) => {{
+        use ::std::fmt::Write;
+        let mut s = quicklog::BumpString::with_capacity_in(2048, $in);
+        s.write_fmt(format_args!($fmt_str, $($args)*)).unwrap();
+        s
+    }};
+
+    ($in:expr, $fmt_str:expr) => {{
+        use ::std::fmt::Write;
+        let mut s = quicklog::BumpString::with_capacity_in(2048, $in);
+        s.write_fmt(format_args!($fmt_str)).unwrap();
+        s
+    }};
+}

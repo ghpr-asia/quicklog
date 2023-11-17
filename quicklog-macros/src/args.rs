@@ -68,6 +68,13 @@ impl PrefixedField {
         }
     }
 
+    pub(crate) fn formatter(&self) -> &'static str {
+        match self {
+            Self::Unnamed(ident) => ident.formatter(),
+            Self::Named(f) => f.arg.formatter(),
+        }
+    }
+
     pub(crate) fn is_serialize(&self) -> bool {
         matches!(
             self,
