@@ -70,6 +70,13 @@ macro_rules! flush {
     };
 }
 
+#[macro_export]
+macro_rules! try_flush {
+    () => {
+        $crate::logger().flush()
+    };
+}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! str_format {
