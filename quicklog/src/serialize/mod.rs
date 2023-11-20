@@ -1,4 +1,4 @@
-use std::{fmt::Display, mem::size_of, str::from_utf8};
+use std::{borrow::Cow, fmt::Display, mem::size_of, str::from_utf8};
 
 /// Allows specification of a custom way to serialize the Struct.
 ///
@@ -216,6 +216,20 @@ impl Serialize for &str {
     }
 }
 
+impl Serialize for Cow<'_, str> {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+        self.as_ref().encode(write_buf)
+    }
+
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        <&str as Serialize>::decode(read_buf)
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        self.as_ref().buffer_size_required()
+    }
+}
+
 impl Serialize for String {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
         self.as_str().encode(write_buf)
@@ -397,6 +411,7 @@ mod tests {
         serialize::{encode_debug, Serialize},
         Serialize,
     };
+    use std::borrow::Cow;
     use std::mem::size_of;
 
     macro_rules! assert_primitive_encode_decode {
@@ -443,9 +458,12 @@ mod tests {
     fn serialize_str() {
         let mut buf = [0; 128];
         let s = "hello world";
-        let (store, _) = s.encode(&mut buf);
+        let v = Cow::from("hello world 2");
+        let (s_store, rest) = s.encode(&mut buf);
+        let (v_store, _) = v.encode(rest);
 
-        assert_eq!(s, format!("{}", store).as_str())
+        assert_eq!(s, format!("{}", s_store).as_str());
+        assert_eq!(v, format!("{}", v_store).as_str())
     }
 
     #[test]
