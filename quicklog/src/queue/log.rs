@@ -1,8 +1,6 @@
 use std::mem::size_of;
 
-use quanta::Instant;
-
-use crate::{level::Level, serialize::DecodeEachFn, utils::any_as_bytes};
+use crate::{level::Level, serialize::DecodeEachFn, utils::any_as_bytes, Instant};
 
 use super::{ChunkRead, ChunkWrite, ReadError, ReadResult};
 

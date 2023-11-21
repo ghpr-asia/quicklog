@@ -204,8 +204,8 @@ mod utils;
 
 use bumpalo::Bump;
 use dyn_fmt::AsStrFormatExt;
+use minstant::Instant;
 use once_cell::unsync::Lazy;
-use quanta::Instant;
 use queue::Cursor;
 use queue::{
     ArgsKind, Consumer, FlushError, FlushResult, LogArgType, LogHeader, Metadata, Producer, Queue,
@@ -447,8 +447,6 @@ impl Default for Quicklog {
     fn default() -> Self {
         const MAX_FMT_BUFFER_CAPACITY: usize = 1048576;
         let (sender, receiver) = Queue::new(MAX_LOGGER_CAPACITY);
-        // Force initialization of quanta global clock
-        _ = Instant::now();
 
         Quicklog {
             flusher: Box::new(FileFlusher::new("logs/quicklog.log")),

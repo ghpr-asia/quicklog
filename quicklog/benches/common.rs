@@ -10,13 +10,13 @@ macro_rules! loop_with_cleanup {
         quicklog::init!();
 
         $bencher.iter_custom(|iters| {
-            let start = quanta::Instant::now();
+            let start = quicklog::Quicklog::now();
 
             for _i in 0..iters {
                 $loop_f;
             }
 
-            let end = quanta::Instant::now() - start;
+            let end = start.elapsed();
 
             $cleanup_f;
 
