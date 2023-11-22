@@ -88,9 +88,54 @@ fn bench_logger_nested(b: &mut Bencher) {
     loop_with_cleanup!(b, black_box(quicklog::info!(nested, "Some data:")));
 }
 
+fn bench_multiple_quicklog_nested(b: &mut Bencher) {
+    let bs = black_box(BigStruct {
+        vec: [1; 100],
+        some: "The quick brown fox jumps over the lazy dog",
+    });
+    let mut nested = black_box(Nested { vec: Vec::new() });
+    for _ in 0..10 {
+        nested.vec.push(bs)
+    }
+    with_flush!(NoopFlusher);
+    loop_with_cleanup!(b, {
+        for _ in 0..10 {
+            black_box(quicklog::info!(nested, "Some data:"));
+        }
+        quicklog::flush!();
+    });
+}
+
+fn bench_multiple_deferred_quicklog_nested(b: &mut Bencher) {
+    let bs = black_box(BigStruct {
+        vec: [1; 100],
+        some: "The quick brown fox jumps over the lazy dog",
+    });
+    let mut nested = black_box(Nested { vec: Vec::new() });
+    for _ in 0..10 {
+        nested.vec.push(bs)
+    }
+    with_flush!(NoopFlusher);
+    loop_with_cleanup!(b, {
+        for _ in 0..10 {
+            black_box(quicklog::info_defer!(nested, "Some data:"));
+        }
+        quicklog::commit!();
+        quicklog::flush!();
+    });
+}
+
 fn bench_loggers(c: &mut Criterion) {
     let mut group = c.benchmark_group("Loggers");
     group.bench_function("bench quicklog Nested", bench_logger_nested);
+    group.bench_function(
+        "bench multiple quicklog Nested",
+        bench_multiple_quicklog_nested,
+    );
+    group.bench_function(
+        "bench multiple deferred quicklog Nested",
+        bench_multiple_deferred_quicklog_nested,
+    );
     group.bench_function("bench tracing Nested", bench_callsite_tracing);
     group.bench_function("bench delog Nested", bench_callsite_delog);
     group.finish();

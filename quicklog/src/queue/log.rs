@@ -8,7 +8,7 @@ use super::{ChunkRead, ChunkWrite, ReadError, ReadResult};
 pub type FlushResult = Result<(), FlushError>;
 
 /// Errors that can be presented when flushing.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum FlushError {
     /// Queue is empty.
     Empty,

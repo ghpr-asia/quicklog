@@ -214,6 +214,31 @@ macro_rules! helper_assert {
 }
 
 #[macro_export]
+macro_rules! assert_no_messages {
+    () => {
+        assert_eq!(
+            quicklog::try_flush!(),
+            Err(quicklog::queue::FlushError::Empty)
+        );
+    };
+}
+
+#[macro_export]
+macro_rules! assert_messages {
+    ($($messages:expr),*) => {{
+        let lines = unsafe { common::from_log_lines(&VEC, common::message_from_log_line) };
+        let mut lines = lines.iter();
+        $(
+            let line = lines.next().unwrap().as_str();
+            assert_eq!(line, $messages);
+         )*
+        unsafe {
+            _ = VEC.clear();
+        }
+    }};
+}
+
+#[macro_export]
 macro_rules! assert_message_equal {
     ($f:expr, $format_string:expr) => { helper_assert!(@ $f, $format_string, common::message_from_log_line) };
 }

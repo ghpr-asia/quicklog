@@ -278,18 +278,23 @@ fn has_fmt_specifiers(fmt_str: &str) -> bool {
 
 /// Parses token stream into the different components of `Args` and
 /// generates required tokens from the inputs
-pub(crate) fn expand(level: Level, input: TokenStream) -> TokenStream {
-    expand_parsed(level, parse_macro_input!(input as Args)).into()
+pub(crate) fn expand(level: Level, input: TokenStream, defer_commit: bool) -> TokenStream {
+    expand_parsed(level, parse_macro_input!(input as Args), defer_commit).into()
 }
 
 /// Main function for expanding the components parsed from the macro call
-pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
+pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> TokenStream2 {
     let Codegen {
         prologue,
         prefixed_args,
         fmt_args,
         metadata,
     } = Codegen::new(&args, &level);
+    let finish = if defer_commit {
+        quote! { logger.finish_write(commit_size); }
+    } else {
+        quote! { logger.finish_and_commit(commit_size); }
+    };
 
     quote! {{
         if quicklog::is_level_enabled!(#level) {
@@ -310,7 +315,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
                 #prefixed_args
 
                 let commit_size = cursor.finish();
-                logger.finish_and_commit(commit_size);
+                #finish
 
                 Ok::<(), quicklog::queue::WriteError>(())
             })()

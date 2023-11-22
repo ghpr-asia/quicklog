@@ -219,7 +219,10 @@ use chrono::{DateTime, Utc};
 use constants::MAX_LOGGER_CAPACITY;
 use quicklog_flush::{file_flusher::FileFlusher, Flush};
 
-pub use quicklog_macros::{debug, error, info, trace, warn, Serialize};
+pub use quicklog_macros::{
+    debug, debug_defer, error, error_defer, info, info_defer, trace, trace_defer, warn, warn_defer,
+    Serialize,
+};
 
 /// Logger initialized to [`Quicklog`].
 #[doc(hidden)]

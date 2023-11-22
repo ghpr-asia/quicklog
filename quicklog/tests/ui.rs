@@ -13,4 +13,5 @@ fn ui() {
     t.pass("tests/eager.rs");
     t.pass("tests/fields.rs");
     t.pass("tests/serialize.rs");
+    t.pass("tests/defer.rs");
 }
