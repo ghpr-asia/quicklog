@@ -33,13 +33,14 @@ struct SerializeStruct {
 /// Granted, when writing `encode` manually, this is prone to error. But when
 /// maximum performance is needed, this is one way to avoid doing more work than
 /// (absolutely) necessary.
-struct ManualSerializeStruct {
+struct ManualSerializeStruct<'buf> {
     a: &'static str,
     b: usize,
     c: String,
+    d: &'buf [u8],
 }
 
-impl Serialize for ManualSerializeStruct {
+impl Serialize for ManualSerializeStruct<'_> {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
         /// Cast reference to an arbitrary `T` into a byte slice.
         ///
@@ -54,7 +55,8 @@ impl Serialize for ManualSerializeStruct {
 
         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
         let (a_chunk, chunk_rest) = chunk.split_at_mut(size_of::<&str>());
-        let (b_chunk, c_chunk) = chunk_rest.split_at_mut(size_of::<usize>());
+        let (b_chunk, chunk_rest) = chunk_rest.split_at_mut(size_of::<usize>());
+        let (c_chunk, d_chunk) = chunk_rest.split_at_mut(self.c.buffer_size_required());
 
         // Since str is 'static, just copy pointer
         a_chunk.copy_from_slice(any_as_bytes(&self.a));
@@ -73,6 +75,14 @@ impl Serialize for ManualSerializeStruct {
         // already provided out-of-the-box. So, here we can piggy back on that
         // implementation.
         _ = self.c.encode(c_chunk);
+
+        // For dynamically-sized buffers, note that we need to encode
+        // the *length* of the buffer as well. Otherwise, during decoding, we
+        // wouldn't know how many bytes to read to restore the contents of the
+        // buffer.
+        let (d_len_chunk, d_buf_chunk) = d_chunk.split_at_mut(size_of::<usize>());
+        d_len_chunk.copy_from_slice(&self.d.len().to_le_bytes());
+        d_buf_chunk.copy_from_slice(self.d);
 
         (Store::new(Self::decode, chunk), rest)
     }
@@ -96,14 +106,31 @@ impl Serialize for ManualSerializeStruct {
         // Recover `String`, utilizing the default-provided implementation
         let (c, rest) = <String as Serialize>::decode(rest);
 
+        // To recover our buffer, we first need to read off how many bytes it
+        // originally contained, then restore that many bytes.
+        let (d_len_chunk, rest) = rest.split_at(size_of::<usize>());
+        let d_len = usize::from_le_bytes(d_len_chunk.try_into().unwrap());
+        let (d, rest) = rest.split_at(d_len);
+
         (
-            format!("ManualSerializeStruct {{ a: {}, b: {}, c: {} }}", a, b, c),
+            format!(
+                "ManualSerializeStruct {{ a: {}, b: {}, c: {}, d: {:?} }}",
+                a, b, c, d
+            ),
             rest,
         )
     }
 
     fn buffer_size_required(&self) -> usize {
-        size_of::<&str>() + size_of::<usize>() * 2 + self.c.len()
+        // Manually compute size of pointer, since we just copy the pointer
+        // in this case (instead of utilizing the default `Serialize`
+        // implementation for &str)
+        let a_len = size_of::<&str>();
+
+        a_len
+            + self.b.buffer_size_required()
+            + self.c.buffer_size_required()
+            + (self.d.len() + size_of::<usize>())
     }
 }
 
@@ -132,13 +159,14 @@ fn main() {
         a: "Hello world 1",
         b: 50,
         c: "Hello world 2".to_string(),
+        d: &[1, 2, 3, 4, 5],
     };
 
     // Prints "Struct deriving Serialize: derive=SerializeStruct { a: 1, b: -2, c: 3
     // }"
     info!(derive, "Struct deriving Serialize:");
     // Prints "Struct implementing custom Serialize: manual=ManualSerializeStruct {
-    // a: Hello world 1, b: 50, c: Hello world 2 }"
+    // a: Hello world 1, b: 50, c: Hello world 2, d: [1, 2, 3, 4, 5] }"
     info!(manual, "Struct implementing custom Serialize:");
 
     flush!();
