@@ -220,7 +220,7 @@ impl ChunkWrite for FmtArgHeader {
 }
 
 #[inline]
-pub fn log_header_size() -> usize {
+pub const fn log_header_size() -> usize {
     size_of::<LogHeader>()
 }
 
