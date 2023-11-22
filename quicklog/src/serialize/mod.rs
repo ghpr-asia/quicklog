@@ -292,6 +292,122 @@ impl<T: Serialize> Serialize for Vec<T> {
     }
 }
 
+impl<T: Serialize> Serialize for Box<T> {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+        self.as_ref().encode(write_buf)
+    }
+
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        <T as Serialize>::decode(read_buf)
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        self.as_ref().buffer_size_required()
+    }
+}
+
+impl<T: Serialize> Serialize for Option<T> {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
+        let chunk_ptr = chunk.as_mut_ptr();
+        if let Some(v) = self.as_ref() {
+            let value_chunk = unsafe {
+                chunk_ptr.write(1u8);
+                std::slice::from_raw_parts_mut(chunk_ptr.add(1), chunk.len() - size_of::<u8>())
+            };
+            _ = v.encode(value_chunk);
+        } else {
+            unsafe {
+                chunk_ptr.write(2u8);
+            }
+        }
+
+        (Store::new(Self::decode, chunk), rest)
+    }
+
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        let (tag_chunk, mut chunk) = read_buf.split_at(size_of::<u8>());
+        let tag = u8::from_le_bytes(tag_chunk.try_into().unwrap());
+        let result = match tag {
+            1 => {
+                let (value, rest) = <T as Serialize>::decode(chunk);
+                chunk = rest;
+
+                format!("Some({})", value)
+            }
+            2 => "None".to_string(),
+            // TODO: better error handling for `Serialize`, in general
+            _ => panic!("unexpected bytes read"),
+        };
+
+        (result, chunk)
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        size_of::<u8>()
+            + self
+                .as_ref()
+                .map(|t| t.buffer_size_required())
+                .unwrap_or_default()
+    }
+}
+
+impl<T: Serialize, E: Serialize> Serialize for Result<T, E> {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
+        let chunk_ptr = chunk.as_mut_ptr();
+        match self {
+            Ok(v) => {
+                let value_chunk = unsafe {
+                    chunk_ptr.write(1u8);
+                    std::slice::from_raw_parts_mut(chunk_ptr.add(1), chunk.len() - size_of::<u8>())
+                };
+                _ = v.encode(value_chunk);
+            }
+            Err(v) => {
+                let value_chunk = unsafe {
+                    chunk_ptr.write(2u8);
+                    std::slice::from_raw_parts_mut(chunk_ptr.add(1), chunk.len() - size_of::<u8>())
+                };
+                _ = v.encode(value_chunk);
+            }
+        }
+
+        (Store::new(Self::decode, chunk), rest)
+    }
+
+    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+        let (tag_chunk, mut chunk) = read_buf.split_at(size_of::<u8>());
+        let tag = u8::from_le_bytes(tag_chunk.try_into().unwrap());
+        let result = match tag {
+            1 => {
+                let (value, rest) = <T as Serialize>::decode(chunk);
+                chunk = rest;
+
+                format!("Ok({})", value)
+            }
+            2 => {
+                let (value, rest) = <E as Serialize>::decode(chunk);
+                chunk = rest;
+
+                format!("Err({})", value)
+            }
+            // TODO: better error handling for `Serialize`, in general
+            _ => panic!("unexpected bytes read"),
+        };
+
+        (result, chunk)
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        size_of::<u8>()
+            + match self {
+                Ok(v) => v.buffer_size_required(),
+                Err(v) => v.buffer_size_required(),
+            }
+    }
+}
+
 /// Generates a format string with normal format specifiers for each value
 /// passed in. Intended for limited dynamic construction of format strings.
 ///
@@ -538,5 +654,55 @@ mod tests {
         let (a_store, _) = a.encode(&mut buf);
 
         assert_eq!(format!("{:?}", a), format!("{}", a_store));
+    }
+
+    #[test]
+    fn serialize_ref() {
+        let a = &5;
+        let b = Box::new(vec!["1", "2", "3"]);
+        let mut buf = [0; 256];
+        let (a_store, rest) = a.encode(&mut buf);
+        let (b_store, _) = b.encode(rest);
+
+        assert_eq!(format!("{} {:?}", a, b), format!("{} {}", a_store, b_store))
+    }
+
+    #[test]
+    fn serialize_option() {
+        let a: Option<usize> = Some(5);
+        let b: Option<bool> = None;
+        let c: Option<Vec<&str>> = Some(vec!["1", "2", "3"]);
+        let mut buf = [0; 256];
+
+        let (a_store, rest) = a.encode(&mut buf);
+        let (b_store, rest) = b.encode(rest);
+        let (c_store, _) = c.encode(rest);
+
+        assert_eq!(
+            format!("{:?} {:?} {:?}", a, b, c),
+            format!("{} {} {}", a_store, b_store, c_store)
+        );
+    }
+
+    #[test]
+    fn serialize_res() {
+        #[allow(unused)]
+        #[derive(Debug, Serialize)]
+        enum SomeError {
+            A,
+            B,
+        }
+
+        let a: Result<usize, usize> = Ok(5);
+        let b: Result<String, SomeError> = Err(SomeError::A);
+        let mut buf = [0; 256];
+
+        let (a_store, rest) = a.encode(&mut buf);
+        let (b_store, _) = b.encode(rest);
+
+        assert_eq!(
+            format!("{:?} {:?}", a, b),
+            format!("{} {}", a_store, b_store)
+        );
     }
 }
