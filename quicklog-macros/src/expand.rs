@@ -51,7 +51,7 @@ impl Codegen {
                 prologue: quote! {
                     let mut logger = quicklog::logger();
                     let now = quicklog::Quicklog::now();
-                    let size = quicklog::queue::log_size_required(&[]);
+                    let size = quicklog::queue::log_header_size();
                     let chunk = logger.sender.prepare_write(size)?;
                     let mut cursor = quicklog::queue::Cursor::new(chunk);
 
@@ -131,7 +131,7 @@ impl Codegen {
 
             if all_serialize {
                 let serialize_args: Vec<_> = args.prefixed_fields.iter().map(|f| f.arg()).collect();
-                return quote! {  quicklog::queue::log_size_required(&[]) + (#(&#serialize_args,)*).buffer_size_required() };
+                return quote! {  quicklog::queue::log_header_size() + (#(&#serialize_args,)*).buffer_size_required() };
             }
 
             for ident in fmt_idents {

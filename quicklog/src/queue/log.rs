@@ -219,10 +219,15 @@ impl ChunkWrite for FmtArgHeader {
     }
 }
 
+#[inline]
+pub fn log_header_size() -> usize {
+    size_of::<LogHeader>()
+}
+
 /// Computes overall size required for writing a log record.
 pub fn log_size_required(args: &[(LogArgType, usize)]) -> usize {
     let mut size_required = 0;
-    size_required += size_of::<LogHeader>();
+    size_required += log_header_size();
 
     for (arg_type, arg_size) in args {
         size_required += match arg_type {
