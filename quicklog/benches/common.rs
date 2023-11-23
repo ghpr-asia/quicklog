@@ -3,7 +3,7 @@ use quicklog::serialize::{Serialize, Store};
 #[macro_export]
 macro_rules! loop_with_cleanup {
     ($bencher:expr, $loop_f:expr) => {
-        loop_with_cleanup!($bencher, $loop_f, { quicklog::flush!() })
+        loop_with_cleanup!($bencher, $loop_f, flush_all!())
     };
 
     ($bencher:expr, $loop_f:expr, $cleanup_f:expr) => {{
@@ -23,6 +23,19 @@ macro_rules! loop_with_cleanup {
             end
         })
     }};
+}
+
+#[macro_export]
+macro_rules! flush_all {
+    () => {
+        loop {
+            match quicklog::flush!() {
+                Ok(()) => {}
+                Err(quicklog::queue::FlushError::Empty) => break,
+                Err(e) => panic!("{:?}", e),
+            }
+        }
+    };
 }
 
 #[allow(dead_code)]

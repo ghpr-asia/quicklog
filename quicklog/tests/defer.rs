@@ -1,4 +1,4 @@
-use quicklog::{commit, flush, info_defer};
+use quicklog::{commit, info_defer};
 
 use common::{SerializeStruct, Something};
 
@@ -39,7 +39,7 @@ fn main() {
     info_defer!(debug = ?s1, display = %s1, serialize = s, "Mix 2:");
     assert_no_messages!();
     commit!();
-    flush!();
+    flush_all!();
     assert_messages!(
         "hello world 2",
         "Serialize 2: s=Hello",

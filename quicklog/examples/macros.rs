@@ -104,5 +104,5 @@ fn main() {
     info!(debug_impl = ?s_0, "My struct {a}", a = s_0);
     info!(debug_impl = ?s_0, "My struct {s_0:?}");
 
-    flush!();
+    while let Ok(()) = flush!() {}
 }

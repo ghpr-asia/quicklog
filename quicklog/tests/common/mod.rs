@@ -199,12 +199,25 @@ macro_rules! setup {
     };
 }
 
+#[macro_export]
+macro_rules! flush_all {
+    () => {
+        loop {
+            match quicklog::flush!() {
+                Ok(()) => {}
+                Err(quicklog::queue::FlushError::Empty) => break,
+                Err(e) => panic!("{:?}", e),
+            }
+        }
+    };
+}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! helper_assert {
     (@ $f:expr, $format_string:expr, $check_f:expr) => {
         $f;
-        quicklog::flush!();
+        flush_all!();
         let output = unsafe { common::from_log_lines(&VEC, $check_f) };
         assert_eq!(output, vec![$format_string]);
         unsafe {
@@ -216,10 +229,7 @@ macro_rules! helper_assert {
 #[macro_export]
 macro_rules! assert_no_messages {
     () => {
-        assert_eq!(
-            quicklog::try_flush!(),
-            Err(quicklog::queue::FlushError::Empty)
-        );
+        assert_eq!(quicklog::flush!(), Err(quicklog::queue::FlushError::Empty));
     };
 }
 

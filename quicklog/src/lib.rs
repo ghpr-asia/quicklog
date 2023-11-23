@@ -345,7 +345,7 @@ impl Quicklog {
         self.formatter = formatter
     }
 
-    /// Flushes all arguments from the queue.
+    /// Flushes a single log record from the queue.
     ///
     /// Iteratively reads through the queue to extract encoded logging
     /// arguments. This happens by:
@@ -362,58 +362,54 @@ impl Quicklog {
             .map_err(|_| FlushError::Empty)?;
         let mut cursor = Cursor::new(chunk);
 
-        loop {
-            // Parse header for entire log message
-            let Ok(log_header) = cursor.read::<LogHeader>() else {
-                break;
-            };
+        // Parse header for entire log message
+        let log_header = cursor.read::<LogHeader>()?;
 
-            let time = self.clock.compute_datetime(log_header.instant);
-            let formatted = match log_header.args_kind {
-                ArgsKind::AllSerialize(decode_fn) => {
-                    let mut decoded_args = Vec::new();
-                    cursor.read_decode_each(decode_fn, &mut decoded_args)?;
+        let time = self.clock.compute_datetime(log_header.instant);
+        let formatted = match log_header.args_kind {
+            ArgsKind::AllSerialize(decode_fn) => {
+                let mut decoded_args = Vec::new();
+                cursor.read_decode_each(decode_fn, &mut decoded_args)?;
 
-                    log_header.metadata.format_str.format(&decoded_args)
+                log_header.metadata.format_str.format(&decoded_args)
+            }
+            ArgsKind::Normal(num_args) => {
+                let mut decoded_args = Vec::with_capacity(num_args);
+                for _ in 0..num_args {
+                    let arg_type = cursor.read::<LogArgType>()?;
+
+                    let decoded = match arg_type {
+                        LogArgType::Fmt => {
+                            // Remaining: size of argument
+                            let size_of_arg = cursor.read::<usize>()?;
+                            let arg_chunk = cursor.read_bytes(size_of_arg)?;
+
+                            // Assuming that we wrote this using in-built std::fmt, so should be valid string
+                            std::str::from_utf8(arg_chunk)
+                                .map_err(|_| ReadError::UnexpectedValue)?
+                                .to_string()
+                        }
+                        LogArgType::Serialize => {
+                            // Remaining: size of argument, DecodeFn
+                            let size_of_arg = cursor.read::<usize>()?;
+                            let decode_fn = cursor.read::<DecodeFn>()?;
+                            let arg_chunk = cursor.read_bytes(size_of_arg)?;
+
+                            let (decoded, _) = decode_fn(arg_chunk);
+                            decoded
+                        }
+                    };
+                    decoded_args.push(decoded);
                 }
-                ArgsKind::Normal(num_args) => {
-                    let mut decoded_args = Vec::with_capacity(num_args);
-                    for _ in 0..num_args {
-                        let arg_type = cursor.read::<LogArgType>()?;
 
-                        let decoded = match arg_type {
-                            LogArgType::Fmt => {
-                                // Remaining: size of argument
-                                let size_of_arg = cursor.read::<usize>()?;
-                                let arg_chunk = cursor.read_bytes(size_of_arg)?;
+                log_header.metadata.format_str.format(&decoded_args)
+            }
+        };
 
-                                // Assuming that we wrote this using in-built std::fmt, so should be valid string
-                                std::str::from_utf8(arg_chunk)
-                                    .map_err(|_| ReadError::UnexpectedValue)?
-                                    .to_string()
-                            }
-                            LogArgType::Serialize => {
-                                // Remaining: size of argument, DecodeFn
-                                let size_of_arg = cursor.read::<usize>()?;
-                                let decode_fn = cursor.read::<DecodeFn>()?;
-                                let arg_chunk = cursor.read_bytes(size_of_arg)?;
-
-                                let (decoded, _) = decode_fn(arg_chunk);
-                                decoded
-                            }
-                        };
-                        decoded_args.push(decoded);
-                    }
-
-                    log_header.metadata.format_str.format(&decoded_args)
-                }
-            };
-
-            let log_line = self
-                .formatter
-                .custom_format(time, log_header.metadata, &formatted);
-            self.flusher.flush_one(log_line);
-        }
+        let log_line = self
+            .formatter
+            .custom_format(time, log_header.metadata, &formatted);
+        self.flusher.flush_one(log_line);
 
         let read = cursor.finish();
         self.receiver.finish_read(read);

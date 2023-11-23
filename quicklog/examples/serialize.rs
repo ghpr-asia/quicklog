@@ -169,5 +169,5 @@ fn main() {
     // a: Hello world 1, b: 50, c: Hello world 2, d: [1, 2, 3, 4, 5] }"
     info!(manual, "Struct implementing custom Serialize:");
 
-    flush!();
+    while let Ok(()) = flush!() {}
 }

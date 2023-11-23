@@ -50,24 +50,12 @@ macro_rules! is_level_enabled {
     };
 }
 
-/// Flushes all log records onto an implementor of [`Flush`], which can be
-/// modified with [`with_flush!`] macro. Assumes that at least one record is
-/// present, and panics if this is not the case.
-///
-/// [`Flush`]: `quicklog_flush::Flush`
-#[macro_export]
-macro_rules! flush {
-    () => {
-        $crate::try_flush!().unwrap();
-    };
-}
-
-/// Flushes all log records onto an implementor of [`Flush`], which can be
+/// Flushes a single log record onto an implementor of [`Flush`], which can be
 /// modified with [`with_flush!`] macro.
 ///
 /// [`Flush`]: `quicklog_flush::Flush`
 #[macro_export]
-macro_rules! try_flush {
+macro_rules! flush {
     () => {
         $crate::logger().flush()
     };
