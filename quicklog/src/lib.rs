@@ -378,10 +378,8 @@ impl Quicklog {
                 }
                 ArgsKind::Normal(num_args) => {
                     let mut decoded_args = Vec::with_capacity(num_args);
-                    while decoded_args.len() < num_args {
-                        let Ok(arg_type) = cursor.read::<LogArgType>() else {
-                            break;
-                        };
+                    for _ in 0..num_args {
+                        let arg_type = cursor.read::<LogArgType>()?;
 
                         let decoded = match arg_type {
                             LogArgType::Fmt => {
@@ -405,10 +403,6 @@ impl Quicklog {
                             }
                         };
                         decoded_args.push(decoded);
-                    }
-
-                    if decoded_args.len() != num_args {
-                        continue;
                     }
 
                     log_header.metadata.format_str.format(&decoded_args)
