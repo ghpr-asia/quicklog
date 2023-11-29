@@ -166,7 +166,7 @@
 //!
 //! ### Example
 //!
-//! ```
+//! ```no_run
 //! # use quicklog::{flush, info, init, with_flush_into_file, FileFlusher};
 //! #
 //! # fn main() {
@@ -185,6 +185,7 @@
 //! [`Serialize`]: serialize::Serialize
 //! [`StdoutFlusher`]: crate::StdoutFlusher
 //! [`FileFlusher`]: crate::FileFlusher
+#![doc = include_str!("../../README.md")]
 
 /// Contains logging levels and filters.
 pub mod level;
@@ -217,7 +218,7 @@ use serialize::DecodeFn;
 
 pub use ::bumpalo::collections::String as BumpString;
 
-use chrono::{DateTime, Utc};
+pub use chrono::{DateTime, Utc};
 use constants::MAX_LOGGER_CAPACITY;
 
 pub use quicklog_flush::{
