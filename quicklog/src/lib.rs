@@ -330,6 +330,8 @@ impl Quicklog {
         _ = logger();
     }
 
+    /// Retrieves current timestamp (cycle count) using
+    /// [`Instant`](minstant::Instant).
     pub fn now() -> Instant {
         Instant::now()
     }

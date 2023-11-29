@@ -121,20 +121,6 @@ impl From<ReadError> for FlushError {
     }
 }
 
-/// Error advancing [`Cursor`] through the queue.
-pub enum CursorError {
-    /// Queue does not have any space left to advance through.
-    NoSpaceLeft,
-}
-
-impl From<CursorError> for ReadError {
-    fn from(value: CursorError) -> Self {
-        match value {
-            CursorError::NoSpaceLeft => Self::NotEnoughBytes,
-        }
-    }
-}
-
 /// Similar to [`std::io::Cursor`], but we implement our own methods to aid in
 /// writing structured data to the buffer.
 pub struct Cursor<T> {
