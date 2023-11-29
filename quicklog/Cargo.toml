@@ -1,6 +1,6 @@
 [package]
 name = "quicklog"
-version = "0.3.9"
+version = "0.3.10"
 # passing all test cases through trybuild
 autotests = false
 edition = "2021"

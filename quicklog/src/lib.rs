@@ -185,7 +185,6 @@
 //! [`Serialize`]: serialize::Serialize
 //! [`StdoutFlusher`]: crate::StdoutFlusher
 //! [`FileFlusher`]: crate::FileFlusher
-#![doc = include_str!("../../README.md")]
 
 /// Contains logging levels and filters.
 pub mod level;
