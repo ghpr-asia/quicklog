@@ -5,9 +5,8 @@ use chrono::{DateTime, Utc};
 use quicklog::{
     queue::Metadata,
     serialize::{Serialize, Store},
-    PatternFormatter,
+    Flush, PatternFormatter,
 };
-use quicklog_flush::Flush;
 
 pub(crate) struct VecFlusher {
     pub(crate) vec: &'static mut Vec<String>,

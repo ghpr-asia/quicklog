@@ -5,8 +5,7 @@ use std::time::Duration;
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use lazy_format::make_lazy_format;
 use once_cell::sync::Lazy;
-use quicklog::with_flush;
-use quicklog_flush::noop_flusher::NoopFlusher;
+use quicklog::{with_flush, NoopFlusher};
 use recycle_box::{coerce_box, RecycleBox};
 
 mod common;

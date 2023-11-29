@@ -1,7 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use delog::render::DefaultRenderer;
-use quicklog::with_flush;
-use quicklog_flush::noop_flusher::NoopFlusher;
+use quicklog::{with_flush, NoopFlusher};
 
 mod common;
 

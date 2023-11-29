@@ -2,9 +2,8 @@ use quicklog::{
     debug, error, flush, info, init,
     queue::Metadata,
     serialize::{Serialize, Store},
-    trace, warn, with_flush, with_formatter, PatternFormatter,
+    trace, warn, with_flush, with_formatter, PatternFormatter, StdoutFlusher,
 };
-use quicklog_flush::stdout_flusher::StdoutFlusher;
 
 #[derive(Clone, Debug)]
 struct S {

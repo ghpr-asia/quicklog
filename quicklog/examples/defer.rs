@@ -1,8 +1,7 @@
 use quicklog::{
     commit, debug_defer, error_defer, flush, info, info_defer, init, queue::FlushError, with_flush,
-    Serialize,
+    Serialize, StdoutFlusher,
 };
-use quicklog_flush::stdout_flusher::StdoutFlusher;
 
 #[derive(Clone, Debug, Serialize)]
 struct S {

@@ -72,9 +72,9 @@
 //!
 //! ## Setup Macros
 //!
-//! Quicklog allows a user specified [`Clock`] or [`Flush`] to be implemented by
-//! the user. This can be passed in through these macros, as long as the
-//! underlying struct implements the correct traits
+//! Quicklog allows a user specified [`Flush`] to be implemented by the user.
+//! This can be passed in through these macros, as long as the underlying struct
+//! implements the correct traits
 //!
 //! * [`with_flush!`]: Specify the Flusher Quicklog uses
 //! * [`with_flush_into_file`]: Specify path to flush log lines into
@@ -167,27 +167,27 @@
 //! ### Example
 //!
 //! ```
-//! # use quicklog::{info, init, flush, with_flush};
-//! # use quicklog_flush::stdout_flusher::StdoutFlusher;
-//! fn main() {
-//!     init!();
+//! # use quicklog::{info, init, flush, with_flush, StdoutFlusher};
+//! #
+//! # fn main() {
+//! init!();
 //!
-//!     with_flush!(StdoutFlusher);
-//!     info!("hello world!");
+//! with_flush!(StdoutFlusher);
+//! info!("hello world!");
 //!
-//!     // uses the StdoutFlusher passed in for flushing
-//!     flush!();
-//! }
+//! // uses the StdoutFlusher passed in for flushing
+//! _ = flush!();
+//! # }
 //! ```
 //!
 //! [`Serialize`]: serialize::Serialize
-//! [`StdoutFlusher`]: quicklog_flush::stdout_flusher::StdoutFlusher
-//! [`FileFlusher`]: quicklog_flush::file_flusher::FileFlusher
+//! [`StdoutFlusher`]: crate::StdoutFlusher
+//! [`FileFlusher`]: crate::FileFlusher
 
 /// Contains logging levels and filters.
 pub mod level;
-/// Macros for logging and modifying the currently used [`Flush`] and [`Clock`]
-/// handlers, along with some utilities.
+/// Macros for logging and modifying the currently used [`Flush`] handlers,
+/// along with some utilities.
 pub mod macros;
 /// [`Serialize`] trait for serialization of various data types to aid in
 /// fast logging.
@@ -217,8 +217,10 @@ pub use ::bumpalo::collections::String as BumpString;
 
 use chrono::{DateTime, Utc};
 use constants::MAX_LOGGER_CAPACITY;
-use quicklog_flush::{file_flusher::FileFlusher, Flush};
 
+pub use quicklog_flush::{
+    file_flusher::FileFlusher, noop_flusher::NoopFlusher, stdout_flusher::StdoutFlusher, Flush,
+};
 pub use quicklog_macros::{
     debug, debug_defer, error, error_defer, info, info_defer, trace, trace_defer, warn, warn_defer,
     Serialize,

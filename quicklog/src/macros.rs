@@ -1,4 +1,4 @@
-/// Used to amend which [`Flush`](quicklog_flush::Flush) implementor is
+/// Used to amend which [`Flush`](crate::Flush) implementor is
 /// currently attached to the global [`Quicklog`](crate::Quicklog) logger.
 #[macro_export]
 macro_rules! with_flush {
@@ -17,14 +17,14 @@ macro_rules! with_formatter {
     }};
 }
 
-/// Overwrites the [`Flush`](quicklog_flush::Flush)
+/// Overwrites the [`Flush`](crate::Flush)
 /// implementor in [`Quicklog`](crate::Quicklog) with a
-/// [`FileFlusher`](quicklog_flush::file_flusher::FileFlusher) using the
+/// [`FileFlusher`](crate::FileFlusher) using the
 /// provided file path.
 #[macro_export]
 macro_rules! with_flush_into_file {
     ($file_path:expr) => {{
-        use quicklog_flush::FileFlusher;
+        use $crate::FileFlusher;
         let flusher = FileFlusher::new($file_path);
         $crate::logger().use_flush(std::boxed::Box::new(flusher));
     }};
@@ -53,7 +53,7 @@ macro_rules! is_level_enabled {
 /// Flushes a single log record onto an implementor of [`Flush`], which can be
 /// modified with [`with_flush!`] macro.
 ///
-/// [`Flush`]: `quicklog_flush::Flush`
+/// [`Flush`]: `crate::Flush`
 #[macro_export]
 macro_rules! flush {
     () => {

@@ -1,5 +1,4 @@
-use quicklog::{debug, error, info, init, trace, warn, with_flush};
-use quicklog_flush::noop_flusher::NoopFlusher;
+use quicklog::{debug, error, info, init, trace, warn, with_flush, NoopFlusher};
 
 fn main() {
     init!();

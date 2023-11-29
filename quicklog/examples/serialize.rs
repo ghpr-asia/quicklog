@@ -2,8 +2,9 @@ use std::mem::size_of;
 
 use quicklog::queue::Metadata;
 use quicklog::serialize::{Serialize, Store};
-use quicklog::{flush, info, init, with_flush, with_formatter, PatternFormatter, Serialize};
-use quicklog_flush::stdout_flusher::StdoutFlusher;
+use quicklog::{
+    flush, info, init, with_flush, with_formatter, PatternFormatter, Serialize, StdoutFlusher,
+};
 
 /// Struct deriving `Serialize` by using the derive-macro.
 ///

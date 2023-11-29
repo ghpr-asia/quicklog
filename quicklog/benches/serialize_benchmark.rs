@@ -53,36 +53,36 @@ impl<const N: usize> Serialize for ArrStruct<N> {
 
 fn bench_64(b: &mut Bencher) {
     let arr = black_box(ArrStruct::<{ 64 / size_of::<u64>() }>::new());
-    quicklog::with_flush!(quicklog_flush::noop_flusher::NoopFlusher);
+    quicklog::with_flush!(quicklog::NoopFlusher);
     loop_with_cleanup!(b, black_box(quicklog::info!(arr, "Some data:")));
 }
 
 fn bench_128(b: &mut Bencher) {
     let arr = black_box(ArrStruct::<{ 128 / size_of::<u64>() }>::new());
-    quicklog::with_flush!(quicklog_flush::noop_flusher::NoopFlusher);
+    quicklog::with_flush!(quicklog::NoopFlusher);
     loop_with_cleanup!(b, black_box(quicklog::info!(arr, "Some data:")));
 }
 
 fn bench_256(b: &mut Bencher) {
     let arr = black_box(ArrStruct::<{ 256 / size_of::<u64>() }>::new());
-    quicklog::with_flush!(quicklog_flush::noop_flusher::NoopFlusher);
+    quicklog::with_flush!(quicklog::NoopFlusher);
     loop_with_cleanup!(b, black_box(quicklog::info!(arr, "Some data:")));
 }
 
 fn bench_512(b: &mut Bencher) {
     let arr = black_box(ArrStruct::<{ 512 / size_of::<u64>() }>::new());
-    quicklog::with_flush!(quicklog_flush::noop_flusher::NoopFlusher);
+    quicklog::with_flush!(quicklog::NoopFlusher);
     loop_with_cleanup!(b, black_box(quicklog::info!(arr, "Some data:")));
 }
 
 fn bench_1024(b: &mut Bencher) {
     let arr = black_box(ArrStruct::<{ 1024 / size_of::<u64>() }>::new());
-    quicklog::with_flush!(quicklog_flush::noop_flusher::NoopFlusher);
+    quicklog::with_flush!(quicklog::NoopFlusher);
     loop_with_cleanup!(b, black_box(quicklog::info!(arr, "Some data:")));
 }
 
 fn bench_3x4(b: &mut Bencher) {
-    quicklog::with_flush!(quicklog_flush::noop_flusher::NoopFlusher);
+    quicklog::with_flush!(quicklog::NoopFlusher);
     loop_with_cleanup!(
         b,
         black_box(quicklog::info!(a = 1u32, b = 2u32, c = 3u32, "Some data:"))
@@ -90,7 +90,7 @@ fn bench_3x4(b: &mut Bencher) {
 }
 
 fn bench_2x4_string(b: &mut Bencher) {
-    quicklog::with_flush!(quicklog_flush::noop_flusher::NoopFlusher);
+    quicklog::with_flush!(quicklog::NoopFlusher);
     loop_with_cleanup!(
         b,
         black_box(quicklog::info!(
