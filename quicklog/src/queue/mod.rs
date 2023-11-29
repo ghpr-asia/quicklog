@@ -15,7 +15,7 @@ pub use log::*;
 
 use crossbeam_utils::CachePadded;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum QueueError {
     NotEnoughSpace,
 }
@@ -85,9 +85,9 @@ impl Producer {
         let tail = self.writer_pos.get();
         let head = self.reader_pos.get();
 
-        let capacity = self.capacity();
-        let remaining = capacity - (tail - head);
         let mask = self.mask;
+        let capacity = mask + 1;
+        let remaining = capacity.saturating_sub(tail.wrapping_sub(head));
         if likely(remaining >= n) {
             return Ok(unsafe {
                 std::slice::from_raw_parts_mut(self.buf.add(tail & mask), remaining)
@@ -97,7 +97,7 @@ impl Producer {
         let head = self.queue.atomic_reader_pos.load(Ordering::Acquire);
         self.reader_pos.set(head);
 
-        let remaining = capacity - (tail - head);
+        let remaining = capacity.saturating_sub(tail.wrapping_sub(head));
         if remaining >= n {
             Ok(unsafe { std::slice::from_raw_parts_mut(self.buf.add(tail & mask), remaining) })
         } else {
@@ -108,7 +108,7 @@ impl Producer {
     /// Advances the local pointer for this writer.
     pub fn finish_write(&mut self, n: usize) {
         let writer_pos = self.writer_pos.get();
-        self.writer_pos.set(writer_pos + n);
+        self.writer_pos.set(writer_pos.wrapping_add(n));
     }
 
     /// Commits written slots to be available for reading.
@@ -120,11 +120,6 @@ impl Producer {
 
     pub fn writer_pos(&self) -> usize {
         self.writer_pos.get()
-    }
-
-    #[inline]
-    fn capacity(&self) -> usize {
-        self.mask + 1
     }
 }
 
@@ -144,7 +139,7 @@ impl Consumer {
         let tail = self.writer_pos.get();
         let head = self.reader_pos.get();
 
-        let available = tail - head;
+        let available = tail.wrapping_sub(head);
         let mask = self.mask;
         if available != 0 {
             return Ok(unsafe { std::slice::from_raw_parts(self.buf.add(head & mask), available) });
@@ -153,7 +148,7 @@ impl Consumer {
         let tail = self.queue.atomic_writer_pos.load(Ordering::Acquire);
         self.writer_pos.set(tail);
 
-        let available = tail - head;
+        let available = tail.wrapping_sub(head);
         if available != 0 {
             Ok(unsafe { std::slice::from_raw_parts(self.buf.add(head & mask), available) })
         } else {
@@ -164,7 +159,7 @@ impl Consumer {
     /// Advances the local pointer for this reader.
     pub fn finish_read(&mut self, n: usize) {
         let reader_pos = self.reader_pos.get();
-        self.reader_pos.set(reader_pos + n);
+        self.reader_pos.set(reader_pos.wrapping_add(n));
     }
 
     /// Commits read slots to be available for writing.
@@ -193,4 +188,139 @@ fn next_power_of_two(n: usize) -> usize {
     }
 
     res
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::Ordering;
+
+    use crate::queue::QueueError;
+
+    use super::Queue;
+
+    #[test]
+    fn read_write() {
+        let (mut producer, mut consumer) = Queue::new(64);
+
+        // Loop to fill up queue and empty it multiple times
+        for _ in 0..256 {
+            // Multiple writes to saturate queue
+            let _buf = producer.prepare_write(32).unwrap();
+            producer.finish_write(32);
+            producer.commit_write();
+
+            let _buf = producer.prepare_write(32).unwrap();
+            producer.finish_write(32);
+            producer.commit_write();
+
+            // When queue is full, then cannot get write buffer
+            assert_eq!(producer.prepare_write(1), Err(QueueError::NotEnoughSpace));
+
+            // Multiple reads to empty queue
+            let buf = consumer.prepare_read().unwrap();
+            assert_eq!(buf.len(), 64);
+            consumer.finish_read(32);
+            consumer.commit_read();
+
+            let buf = consumer.prepare_read().unwrap();
+            assert_eq!(buf.len(), 32);
+            consumer.finish_read(32);
+            consumer.commit_read();
+
+            // When queue is empty, then cannot get read buffer
+            assert_eq!(consumer.prepare_read(), Err(QueueError::NotEnoughSpace));
+        }
+    }
+
+    #[test]
+    fn read_write_overflow() {
+        const DATA_SIZE: usize = 256;
+
+        // Tests that the queue indices wrap around properly
+        let (mut producer, mut consumer) = Queue::new(DATA_SIZE);
+
+        let data = {
+            let mut data = Vec::with_capacity(DATA_SIZE);
+            for i in 0..DATA_SIZE {
+                data.push(i as u8);
+            }
+            data
+        };
+
+        let mut result = [0; DATA_SIZE];
+        let start_pos = usize::MAX - 128;
+        for i in 0..128 {
+            // In each iteration, pretend that we start at a point where we have
+            // written to the queue many times, and the write/read indices are on
+            // the verge of overflow
+            producer
+                .queue
+                .atomic_writer_pos
+                .store(start_pos + i, Ordering::Relaxed);
+            producer
+                .queue
+                .atomic_reader_pos
+                .store(start_pos + i, Ordering::Relaxed);
+
+            producer.writer_pos.set(start_pos + i);
+            producer.reader_pos.set(start_pos + i);
+            consumer.writer_pos.set(start_pos + i);
+            consumer.reader_pos.set(start_pos + i);
+
+            // Writing/reading an amount of data from the queue that will cause
+            // the indices to overflow
+            let buf = producer.prepare_write(DATA_SIZE).unwrap();
+            buf.copy_from_slice(&data);
+            producer.finish_write(DATA_SIZE);
+            producer.commit_write();
+
+            // When queue is full, then cannot get write buffer
+            assert_eq!(producer.prepare_write(1), Err(QueueError::NotEnoughSpace));
+
+            let buf = consumer.prepare_read().unwrap();
+            result.copy_from_slice(buf);
+            consumer.finish_read(DATA_SIZE);
+            consumer.commit_read();
+
+            // When queue is empty, then cannot get read buffer
+            assert_eq!(consumer.prepare_read(), Err(QueueError::NotEnoughSpace));
+
+            // Check that indices wrap around nicely and data doesn't get
+            // corrupted in weird ways
+            assert_eq!(result, data.as_slice());
+            assert_eq!(
+                producer.writer_pos.get(),
+                start_pos.wrapping_add(DATA_SIZE + i)
+            );
+            assert_eq!(
+                consumer.reader_pos.get(),
+                start_pos.wrapping_add(DATA_SIZE + i)
+            );
+            result.fill(0);
+
+            // Check one more set of write/reads
+            let buf = producer.prepare_write(DATA_SIZE).unwrap();
+            buf.copy_from_slice(&data);
+            producer.finish_write(DATA_SIZE);
+            producer.commit_write();
+            assert_eq!(producer.prepare_write(1), Err(QueueError::NotEnoughSpace));
+
+            let buf = consumer.prepare_read().unwrap();
+            result.copy_from_slice(buf);
+            consumer.finish_read(DATA_SIZE);
+            consumer.commit_read();
+            assert_eq!(consumer.prepare_read(), Err(QueueError::NotEnoughSpace));
+
+            assert_eq!(result, data.as_slice());
+            assert_eq!(
+                producer.writer_pos.get(),
+                start_pos.wrapping_add(DATA_SIZE * 2 + i)
+            );
+            assert_eq!(
+                consumer.reader_pos.get(),
+                start_pos.wrapping_add(DATA_SIZE * 2 + i)
+            );
+            result.fill(0);
+        }
+    }
 }
