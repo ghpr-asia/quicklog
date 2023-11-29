@@ -289,8 +289,13 @@ pub trait PatternFormatter {
 pub struct QuickLogFormatter;
 
 impl PatternFormatter for QuickLogFormatter {
-    fn custom_format(&mut self, time: DateTime<Utc>, _: &Metadata, log_record: &str) -> String {
-        format!("[{:?}]{}\n", time, log_record)
+    fn custom_format(
+        &mut self,
+        time: DateTime<Utc>,
+        metadata: &Metadata,
+        log_record: &str,
+    ) -> String {
+        format!("[{:?}][{}]{}\n", time, metadata.level, log_record)
     }
 }
 
