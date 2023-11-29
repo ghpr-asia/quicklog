@@ -2,7 +2,7 @@ use quicklog::{
     debug, error, flush, info, init,
     queue::Metadata,
     serialize::{Serialize, Store},
-    trace, warn, with_flush, with_formatter, PatternFormatter, StdoutFlusher,
+    trace, warn, with_formatter, PatternFormatter,
 };
 
 #[derive(Clone, Debug)]
@@ -48,7 +48,6 @@ impl PatternFormatter for CustomFormatter {
 
 fn main() {
     init!();
-    with_flush!(StdoutFlusher);
     with_formatter!(CustomFormatter);
 
     trace!("hello world! {} {} {}", 2, 3, 4);

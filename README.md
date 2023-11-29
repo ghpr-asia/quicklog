@@ -42,9 +42,6 @@ fn main() {
 fn main() {
     init!();
 
-    // flush into stdout
-    with_flush!(StdoutFlusher);
-
     // item goes into logging queue
     info!("hello world");
 
@@ -53,9 +50,9 @@ fn main() {
 
     // flush into a file path specified
     with_flush_into_file!("logs/my_log.log");
-    
+
     info!("shave yaks");
-    
+
     // flushed into file
     flush!();
 }

@@ -2,9 +2,7 @@ use std::mem::size_of;
 
 use quicklog::queue::Metadata;
 use quicklog::serialize::{Serialize, Store};
-use quicklog::{
-    flush, info, init, with_flush, with_formatter, PatternFormatter, Serialize, StdoutFlusher,
-};
+use quicklog::{flush, info, init, with_formatter, PatternFormatter, Serialize};
 
 /// Struct deriving `Serialize` by using the derive-macro.
 ///
@@ -152,7 +150,6 @@ impl PatternFormatter for PlainFormatter {
 
 fn main() {
     init!();
-    with_flush!(StdoutFlusher);
     with_formatter!(PlainFormatter);
 
     let derive = SerializeStruct { a: 1, b: -2, c: 3 };

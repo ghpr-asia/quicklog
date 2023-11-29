@@ -167,15 +167,17 @@
 //! ### Example
 //!
 //! ```
-//! # use quicklog::{info, init, flush, with_flush, StdoutFlusher};
+//! # use quicklog::{flush, info, init, with_flush_into_file, FileFlusher};
 //! #
 //! # fn main() {
 //! init!();
 //!
-//! with_flush!(StdoutFlusher);
+//! // by default, flushes to stdout via `StdoutFlusher`.
+//! // here we change the output location to a `quicklog.log` file
+//! with_flush_into_file!("quicklog.log");
 //! info!("hello world!");
 //!
-//! // uses the StdoutFlusher passed in for flushing
+//! // flushes to file
 //! _ = flush!();
 //! # }
 //! ```
@@ -446,7 +448,7 @@ impl Default for Quicklog {
         let (sender, receiver) = Queue::new(MAX_LOGGER_CAPACITY);
 
         Quicklog {
-            flusher: Box::new(FileFlusher::new("logs/quicklog.log")),
+            flusher: Box::new(StdoutFlusher),
             formatter: Box::new(QuickLogFormatter),
             clock: Clock::default(),
             sender,

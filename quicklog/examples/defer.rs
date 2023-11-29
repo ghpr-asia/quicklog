@@ -1,6 +1,5 @@
 use quicklog::{
-    commit, debug_defer, error_defer, flush, info, info_defer, init, queue::FlushError, with_flush,
-    Serialize, StdoutFlusher,
+    commit, debug_defer, error_defer, flush, info, info_defer, init, queue::FlushError, Serialize,
 };
 
 #[derive(Clone, Debug, Serialize)]
@@ -14,7 +13,6 @@ struct S {
 // commit operation per log.
 fn main() {
     init!();
-    with_flush!(StdoutFlusher);
 
     let s_0 = S { i: 0 };
 
