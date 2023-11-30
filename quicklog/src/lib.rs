@@ -198,9 +198,6 @@ pub mod serialize;
 /// Operations and types involved with writing/reading to the global buffer.
 pub mod queue;
 
-/// Constants files, generated from `build.rs`.
-mod constants;
-
 /// Utility functions.
 mod utils;
 
@@ -218,7 +215,6 @@ use serialize::DecodeFn;
 pub use ::bumpalo::collections::String as BumpString;
 
 pub use chrono::{DateTime, Utc};
-use constants::MAX_LOGGER_CAPACITY;
 
 pub use quicklog_flush::{
     file_flusher::FileFlusher, noop_flusher::NoopFlusher, stdout_flusher::StdoutFlusher, Flush,
@@ -450,7 +446,16 @@ impl Quicklog {
 impl Default for Quicklog {
     fn default() -> Self {
         const MAX_FMT_BUFFER_CAPACITY: usize = 1048576;
-        let (sender, receiver) = Queue::new(MAX_LOGGER_CAPACITY);
+        let logger_capacity = option_env!("QUICKLOG_MAX_LOGGER_CAPACITY")
+            .and_then(|c| match c.parse::<usize>() {
+                Ok(p) => Some(p),
+                Err(_) => {
+                    eprintln!("Failed to parse value of QUICKLOG_MAX_LOGGER_CAPACITY; defaulting to 1048576B.");
+                    None
+                }
+            })
+            .unwrap_or(1048576);
+        let (sender, receiver) = Queue::new(logger_capacity);
 
         Quicklog {
             flusher: Box::new(StdoutFlusher),
