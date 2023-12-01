@@ -99,10 +99,6 @@ impl ChunkRead for LogArgType {
     fn read(buf: &[u8]) -> ReadResult<Self> {
         usize::read(buf).unwrap().try_into()
     }
-
-    fn bytes_required() -> usize {
-        size_of::<Self>()
-    }
 }
 
 /// Main header for every log record.
@@ -118,6 +114,7 @@ pub struct LogHeader<'a> {
 }
 
 impl<'a> LogHeader<'a> {
+    #[inline]
     pub fn new(metadata: &'a Metadata, instant: Instant, args_kind: ArgsKind) -> Self {
         Self {
             metadata,
@@ -161,22 +158,15 @@ impl ChunkRead for LogHeader<'_> {
             args_kind,
         })
     }
-
-    fn bytes_required() -> usize {
-        size_of::<Self>()
-    }
 }
 
 impl ChunkWrite for LogHeader<'_> {
+    #[inline]
     fn write(&self, buf: &mut [u8]) -> usize {
         let (chunk, _) = buf.split_at_mut(self.bytes_required());
         chunk.copy_from_slice(any_as_bytes(self));
 
         chunk.len()
-    }
-
-    fn bytes_required(&self) -> usize {
-        size_of::<Self>()
     }
 }
 
@@ -191,15 +181,12 @@ pub struct SerializeArgHeader {
 }
 
 impl ChunkWrite for SerializeArgHeader {
+    #[inline]
     fn write(&self, buf: &mut [u8]) -> usize {
         let (chunk, _) = buf.split_at_mut(self.bytes_required());
         chunk.copy_from_slice(any_as_bytes(self));
 
         chunk.len()
-    }
-
-    fn bytes_required(&self) -> usize {
-        size_of::<Self>()
     }
 }
 
@@ -212,15 +199,12 @@ pub struct FmtArgHeader {
 }
 
 impl ChunkWrite for FmtArgHeader {
+    #[inline]
     fn write(&self, buf: &mut [u8]) -> usize {
         let (chunk, _) = buf.split_at_mut(self.bytes_required());
         chunk.copy_from_slice(any_as_bytes(self));
 
         chunk.len()
-    }
-
-    fn bytes_required(&self) -> usize {
-        size_of::<Self>()
     }
 }
 
@@ -230,6 +214,7 @@ pub const fn log_header_size() -> usize {
 }
 
 /// Computes overall size required for writing a log record.
+#[inline]
 pub fn log_size_required(args: &[(LogArgType, usize)]) -> usize {
     let mut size_required = 0;
     size_required += log_header_size();

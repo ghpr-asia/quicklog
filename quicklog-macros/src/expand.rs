@@ -297,8 +297,17 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
         quote! { logger.finish_and_commit(commit_size); }
     };
 
+    let log_level_check = match level {
+        Level::Info => quote! {
+            quicklog::utils::likely(quicklog::is_level_enabled!(#level))
+        },
+        Level::Trace | Level::Debug | Level::Warn | Level::Error => quote! {
+            quicklog::utils::unlikely(quicklog::is_level_enabled!(#level))
+        },
+    };
+
     quote! {{
-        if quicklog::is_level_enabled!(#level) {
+        if #log_level_check {
             use quicklog::{serialize::Serialize};
 
             #metadata
@@ -308,7 +317,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
                 T::decode_each
             }
 
-            (|| {
+            quicklog::log_wrapper(|| {
                 #prologue
 
                 #fmt_args
@@ -319,7 +328,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
                 #finish
 
                 Ok::<(), quicklog::queue::WriteError>(())
-            })()
+            })
         } else {
             Ok(())
         }

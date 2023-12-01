@@ -24,17 +24,19 @@ where
     /// NOTE: this assumes that `buf` has sufficient capacity.
     fn read(buf: &[u8]) -> ReadResult<Self>;
     /// The amount of bytes required to reconstruct the implementing type.
-    fn bytes_required() -> usize;
+    #[inline]
+    fn bytes_required() -> usize
+    where
+        Self: Sized,
+    {
+        size_of::<Self>()
+    }
 }
 
 impl ChunkRead for usize {
     fn read(buf: &[u8]) -> ReadResult<Self> {
         let (chunk, _) = buf.split_at(<Self as ChunkRead>::bytes_required());
         Ok(usize::from_le_bytes(chunk.try_into().unwrap()))
-    }
-
-    fn bytes_required() -> usize {
-        size_of::<usize>()
     }
 }
 
@@ -43,20 +45,12 @@ impl ChunkRead for DecodeFn {
         let (chunk, _) = buf.split_at(<Self as ChunkRead>::bytes_required());
         Ok(unsafe { std::mem::transmute(usize::from_le_bytes(chunk.try_into().unwrap())) })
     }
-
-    fn bytes_required() -> usize {
-        size_of::<Self>()
-    }
 }
 
 impl ChunkRead for DecodeEachFn {
     fn read(buf: &[u8]) -> ReadResult<Self> {
         let (chunk, _) = buf.split_at(<Self as ChunkRead>::bytes_required());
         Ok(unsafe { std::mem::transmute(usize::from_le_bytes(chunk.try_into().unwrap())) })
-    }
-
-    fn bytes_required() -> usize {
-        size_of::<Self>()
     }
 }
 
@@ -67,10 +61,17 @@ pub trait ChunkWrite {
     /// NOTE: this assumes that `buf` has sufficient capacity.
     fn write(&self, buf: &mut [u8]) -> usize;
     /// The amount of bytes required to write the implementing type.
-    fn bytes_required(&self) -> usize;
+    #[inline]
+    fn bytes_required(&self) -> usize
+    where
+        Self: Sized,
+    {
+        size_of::<Self>()
+    }
 }
 
 impl<T: Serialize> ChunkWrite for T {
+    #[inline]
     fn write(&self, buf: &mut [u8]) -> usize {
         let buf_len = buf.len();
         let rest = self.encode(buf);
@@ -78,12 +79,14 @@ impl<T: Serialize> ChunkWrite for T {
         buf_len - rest.len()
     }
 
+    #[inline]
     fn bytes_required(&self) -> usize {
         self.buffer_size_required()
     }
 }
 
 impl ChunkWrite for &[u8] {
+    #[inline]
     fn write(&self, buf: &mut [u8]) -> usize {
         let n = self.len();
         let (chunk, _) = buf.split_at_mut(n);
@@ -92,6 +95,7 @@ impl ChunkWrite for &[u8] {
         n
     }
 
+    #[inline]
     fn bytes_required(&self) -> usize {
         self.len()
     }
@@ -209,6 +213,7 @@ where
 
 impl Cursor<&mut [u8]> {
     /// Writes an argument implementing [`Serialize`], along with its header.
+    #[inline]
     pub fn write_serialize<T: Serialize>(&mut self, arg: &T) -> WriteResult<()> {
         let header = SerializeArgHeader {
             type_of_arg: LogArgType::Serialize,
@@ -220,6 +225,7 @@ impl Cursor<&mut [u8]> {
     }
 
     /// Writes a formatted string along with its header.
+    #[inline]
     pub fn write_str(&mut self, s: impl AsRef<str>) -> WriteResult<()> {
         let formatted = s.as_ref();
         let header = FmtArgHeader {
@@ -234,6 +240,7 @@ impl Cursor<&mut [u8]> {
 
     /// Writes a type implementing [`ChunkWrite`] by writing through the
     /// underlying buffer(s).
+    #[inline]
     pub fn write<T: ChunkWrite>(&mut self, arg: &T) -> WriteResult<()> {
         let required_size = arg.bytes_required();
         let buf = self.remaining_slice();

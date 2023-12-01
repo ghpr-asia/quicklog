@@ -199,7 +199,7 @@ pub mod serialize;
 pub mod queue;
 
 /// Utility functions.
-mod utils;
+pub mod utils;
 
 use bumpalo::Bump;
 use dyn_fmt::AsStrFormatExt;
@@ -209,7 +209,7 @@ use queue::{
     ArgsKind, Consumer, FlushError, FlushResult, LogArgType, LogHeader, Metadata, Producer, Queue,
     ReadError,
 };
-use queue::{Cursor, QueueError};
+use queue::{Cursor, QueueError, WriteError};
 use serialize::DecodeFn;
 
 pub use ::bumpalo::collections::String as BumpString;
@@ -352,6 +352,7 @@ impl Quicklog {
 
     /// Retrieves current timestamp (cycle count) using
     /// [`Instant`](minstant::Instant).
+    #[inline]
     pub fn now() -> Instant {
         Instant::now()
     }
@@ -450,18 +451,21 @@ impl Quicklog {
     }
 
     /// Marks write as complete and commits it for reading.
+    #[inline]
     pub fn finish_and_commit(&mut self, n: usize) {
         self.finish_write(n);
         self.commit_write();
     }
 
     /// Marks write as complete by advancing local writer.
+    #[inline]
     pub fn finish_write(&mut self, n: usize) {
         self.fmt_buffer.reset();
         self.sender.finish_write(n);
     }
 
     /// Commits all uncommitted writes to make slots available for reading.
+    #[inline]
     pub fn commit_write(&mut self) {
         self.sender.commit_write();
     }
@@ -490,4 +494,15 @@ impl Default for Quicklog {
             fmt_buffer: Bump::with_capacity(MAX_FMT_BUFFER_CAPACITY),
         }
     }
+}
+
+/// **WARNING: this is part of the public API and is primarily to aid in macro
+/// codegen.**
+///
+/// Function wrapper that just calls the passed function, ensuring that it is
+/// not expanded inline.
+#[inline(never)]
+#[cold]
+pub fn log_wrapper<F: FnOnce() -> Result<(), WriteError>>(f: F) -> Result<(), WriteError> {
+    f()
 }
