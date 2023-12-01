@@ -2,6 +2,9 @@
 use quicklog::serialize::Serialize as _;
 use quicklog::Serialize;
 
+#[path = "../common/mod.rs"]
+mod common;
+
 #[derive(Serialize)]
 struct TestStruct {
     a: usize,
@@ -17,9 +20,10 @@ fn main() {
     };
     let mut buf = [0; 128];
 
-    let (store, _) = s.encode(&mut buf);
-    assert_eq!(
+    _ = s.encode(&mut buf);
+    decode_and_assert!(
+        s,
         format!("TestStruct {{ a: {}, b: {}, c: {} }}", s.a, s.b, s.c),
-        format!("{}", store)
-    )
+        &buf
+    );
 }

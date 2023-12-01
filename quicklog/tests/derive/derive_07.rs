@@ -4,6 +4,9 @@
 use quicklog::serialize::Serialize as _;
 use quicklog::Serialize;
 
+#[path = "../common/mod.rs"]
+mod common;
+
 #[derive(Serialize)]
 enum TestEnum {
     Foo(String),
@@ -31,13 +34,11 @@ fn main() {
     });
     let mut buf = [0; 256];
 
-    let (foo_store, rest) = foo.encode(&mut buf);
-    let (bar_store, rest) = bar.encode(rest);
-    let (baz_store, _) = baz.encode(rest);
+    let rest = foo.encode(&mut buf);
+    let rest = bar.encode(rest);
+    _ = baz.encode(rest);
 
-    assert_eq!(
-        "Foo(hello world) Bar { a: hello bar, b: 999 } Baz(TestStruct { a: 0, b: -999, c: 2 })"
-            .to_string(),
-        format!("{} {} {}", foo_store, bar_store, baz_store)
-    );
+    let rest = decode_and_assert!(foo, "Foo(hello world)", &buf);
+    let rest = decode_and_assert!(bar, "Bar { a: hello bar, b: 999 }", rest);
+    _ = decode_and_assert!(baz, "Baz(TestStruct { a: 0, b: -999, c: 2 })", rest);
 }

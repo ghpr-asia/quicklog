@@ -90,13 +90,13 @@
 //! need to copy.
 //!
 //! ```ignore
-//! # use quicklog::{init, info, serialize::{Serialize, Store}};
+//! # use quicklog::{init, info, serialize::Serialize};
 //! struct SomeStruct {
 //!     num: i64
 //! }
 //!
 //! impl Serialize for SomeStruct {
-//!    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut[u8]) { /* some impl */ }
+//!    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut[u8] { /* some impl */ }
 //!    fn decode(read_buf: &[u8]) -> (String, &[u8]) { /* some impl */ }
 //!    fn buffer_size_required(&self) -> usize { /* some impl */ }
 //! }

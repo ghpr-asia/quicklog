@@ -1,8 +1,6 @@
 use quicklog::{
-    debug, error, flush, info, init,
-    queue::Metadata,
-    serialize::{Serialize, Store},
-    trace, warn, with_formatter, PatternFormatter,
+    debug, error, flush, info, init, queue::Metadata, serialize::Serialize, trace, warn,
+    with_formatter, PatternFormatter,
 };
 
 #[derive(Clone, Debug)]
@@ -17,7 +15,7 @@ impl std::fmt::Display for S {
 }
 
 impl Serialize for S {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         self.i.encode(write_buf)
     }
 

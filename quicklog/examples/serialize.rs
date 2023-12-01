@@ -1,7 +1,7 @@
 use std::mem::size_of;
 
 use quicklog::queue::Metadata;
-use quicklog::serialize::{Serialize, Store};
+use quicklog::serialize::Serialize;
 use quicklog::{flush, info, init, with_formatter, PatternFormatter, Serialize};
 
 /// Struct deriving `Serialize` by using the derive-macro.
@@ -40,7 +40,7 @@ struct ManualSerializeStruct<'buf> {
 }
 
 impl Serialize for ManualSerializeStruct<'_> {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         /// Cast reference to an arbitrary `T` into a byte slice.
         ///
         /// Basically converts the reference to pointer representation,
@@ -83,7 +83,7 @@ impl Serialize for ManualSerializeStruct<'_> {
         d_len_chunk.copy_from_slice(&self.d.len().to_le_bytes());
         d_buf_chunk.copy_from_slice(self.d);
 
-        (Store::new(Self::decode, chunk), rest)
+        rest
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {

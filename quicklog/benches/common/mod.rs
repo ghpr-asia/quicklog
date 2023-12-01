@@ -1,4 +1,4 @@
-use quicklog::serialize::{Serialize, Store};
+use quicklog::serialize::Serialize;
 
 #[macro_export]
 macro_rules! loop_with_cleanup {
@@ -46,12 +46,12 @@ pub(crate) struct BigStruct {
 }
 
 impl Serialize for BigStruct {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         // BigStruct is Copy, so we can just memcpy the whole struct
         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
         chunk.copy_from_slice(any_as_bytes(self));
 
-        (Store::new(Self::decode, chunk), rest)
+        rest
     }
 
     fn decode(buf: &[u8]) -> (String, &[u8]) {
@@ -73,7 +73,7 @@ pub(crate) struct Nested {
 }
 
 impl Serialize for Nested {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         self.vec.encode(write_buf)
     }
 

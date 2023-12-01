@@ -72,8 +72,10 @@ pub trait ChunkWrite {
 
 impl<T: Serialize> ChunkWrite for T {
     fn write(&self, buf: &mut [u8]) -> usize {
-        let (store, _) = self.encode(buf);
-        store.buffer.len()
+        let buf_len = buf.len();
+        let rest = self.encode(buf);
+
+        buf_len - rest.len()
     }
 
     fn bytes_required(&self) -> usize {

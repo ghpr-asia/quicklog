@@ -31,15 +31,15 @@ use syn::{
 ///     fn encode<'buf>(
 ///         &self,
 ///         write_buf: &'buf mut [u8],
-///     ) -> (quicklog::serialize::Store<'buf>, &'buf mut [u8]) {
+///     ) -> &'buf mut [u8] {
 ///         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
 ///         let (_, mut tail) = chunk.split_at_mut(0);
 ///         let TestStruct { a, b, c } = self;
-///         let (_, tail) = a.encode(tail);
-///         let (_, tail) = b.encode(tail);
-///         let (_, tail) = c.encode(tail);
+///         let tail = a.encode(tail);
+///         let tail = b.encode(tail);
+///         let tail = c.encode(tail);
 ///         assert!(tail.is_empty());
-///         (quicklog::serialize::Store::new(Self::decode, chunk), rest)
+///         rest
 ///     }
 ///     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
 ///         let (a, read_buf) = <usize as quicklog::serialize::Serialize>::decode(read_buf);
@@ -77,26 +77,26 @@ use syn::{
 ///     fn encode<'buf>(
 ///         &self,
 ///         write_buf: &'buf mut [u8],
-///     ) -> (quicklog::serialize::Store<'buf>, &'buf mut [u8]) {
+///     ) -> &'buf mut [u8] {
 ///         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
 ///         let (_, mut tail) = chunk.split_at_mut(0);
 ///         match self {
 ///             Self::Foo(x) => {
-///                 (_, tail) = (0 as usize).encode(tail);
-///                 (_, tail) = x.encode(tail);
+///                 tail = (0 as usize).encode(tail);
+///                 tail = x.encode(tail);
 ///             }
 ///             Self::Bar { a, b } => {
-///                 (_, tail) = (1 as usize).encode(tail);
-///                 (_, tail) = a.encode(tail);
-///                 (_, tail) = b.encode(tail);
+///                 tail = (1 as usize).encode(tail);
+///                 tail = a.encode(tail);
+///                 tail = b.encode(tail);
 ///             }
 ///             Self::Baz(x) => {
-///                 (_, tail) = (2 as usize).encode(tail);
-///                 (_, tail) = x.encode(tail);
+///                 tail = (2 as usize).encode(tail);
+///                 tail = x.encode(tail);
 ///             }
 ///         }
 ///         assert!(tail.is_empty());
-///         (quicklog::serialize::Store::new(Self::decode, chunk), rest)
+///         rest
 ///     }
 ///     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
 ///         let (variant_type, read_buf) = <usize as quicklog::serialize::Serialize>::decode(
@@ -159,7 +159,7 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
     };
     let finish_store = quote! {
         assert!(tail.is_empty());
-        (quicklog::serialize::Store::new(Self::decode, chunk), rest)
+        rest
     };
 
     let (encode, decode, buffer_size_required) = match &input.data {
@@ -225,7 +225,7 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
                 // Wrap encode logic within a match arm
                 let encode_variant = quote! {
                     Self::#variant_name #variant_delimiter_match_all => {
-                        (_, tail) = (#i as usize).encode(tail);
+                        tail = (#i as usize).encode(tail);
                         #encode
                     }
                 };
@@ -276,7 +276,7 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
 
     quote! {
         impl #impl_generics quicklog::serialize::Serialize for #ty_name #ty_generics #where_clause {
-            fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (quicklog::serialize::Store<'buf>, &'buf mut [u8]) {
+            fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
                 #initial_split
 
                 #encode
@@ -323,7 +323,7 @@ fn gen_serialize_methods(
     let encode: TokenStream2 = field_names
         .iter()
         .map(|name| {
-            quote! { (_, tail) = #name.encode(tail); }
+            quote! { tail = #name.encode(tail); }
         })
         .collect();
 

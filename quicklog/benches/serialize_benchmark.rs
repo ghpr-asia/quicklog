@@ -1,7 +1,7 @@
 use std::mem::{size_of, MaybeUninit};
 
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
-use quicklog::serialize::{Serialize, Store};
+use quicklog::serialize::Serialize;
 
 mod common;
 
@@ -32,11 +32,11 @@ impl<const N: usize> ArrStruct<N> {
 }
 
 impl<const N: usize> Serialize for ArrStruct<N> {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
         chunk.copy_from_slice(any_as_bytes(self));
 
-        (Store::new(Self::decode, chunk), rest)
+        rest
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {

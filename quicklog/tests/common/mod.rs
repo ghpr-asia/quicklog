@@ -4,7 +4,7 @@
 use chrono::{DateTime, Utc};
 use quicklog::{
     queue::Metadata,
-    serialize::{Serialize, Store},
+    serialize::{DecodeFn, Serialize},
     Flush, PatternFormatter,
 };
 
@@ -70,7 +70,7 @@ pub(crate) struct Something {
 }
 
 impl Serialize for Something {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         self.some_str.encode(write_buf)
     }
 
@@ -123,7 +123,7 @@ pub(crate) struct SerializeStruct {
 }
 
 impl Serialize for SerializeStruct {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         self.symbol.as_str().encode(write_buf)
     }
 
@@ -143,7 +143,7 @@ pub(crate) struct BigStruct {
 }
 
 impl Serialize for BigStruct {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> (Store<'buf>, &'buf mut [u8]) {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
 
         let elm_size = std::mem::size_of::<i32>();
@@ -156,7 +156,7 @@ impl Serialize for BigStruct {
 
         _ = self.some.encode(str_chunk);
 
-        (Store::new(Self::decode, chunk), rest)
+        rest
     }
 
     fn decode(buf: &[u8]) -> (String, &[u8]) {
@@ -187,6 +187,10 @@ impl std::fmt::Display for SimpleStruct {
     }
 }
 
+pub(crate) const fn get_decode<T: Serialize>(_: &T) -> DecodeFn {
+    T::decode
+}
+
 #[macro_export]
 macro_rules! setup {
     () => {
@@ -209,6 +213,21 @@ macro_rules! flush_all {
             }
         }
     };
+}
+
+#[macro_export]
+macro_rules! decode_and_assert {
+    ($decode:expr, $buf:expr) => {{
+        let (out, rest) = $crate::common::get_decode(&$decode)($buf);
+        assert_eq!(format!("{}", $decode), out);
+        rest
+    }};
+
+    ($decode:expr, $expected:expr, $buf:expr) => {{
+        let (out, rest) = $crate::common::get_decode(&$decode)($buf);
+        assert_eq!($expected, out);
+        rest
+    }};
 }
 
 #[doc(hidden)]
