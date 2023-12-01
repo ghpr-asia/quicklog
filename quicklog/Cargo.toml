@@ -1,6 +1,6 @@
 [package]
 name = "quicklog"
-version = "0.3.11"
+version = "0.3.12"
 # passing all test cases through trybuild
 autotests = false
 edition = "2021"
@@ -19,7 +19,7 @@ path = "tests/derive/derive.rs"
 
 [dependencies]
 quicklog-flush = { path = "../quicklog-flush", version = "0.1.2", registry = "ghp-cargo-local" }
-quicklog-macros = { path = "../quicklog-macros", version = "0.1.5", registry = "ghp-cargo-local" }
+quicklog-macros = { path = "../quicklog-macros", version = "0.1.6", registry = "ghp-cargo-local" }
 once_cell = "1.18.0"
 chrono = { version = "0.4.26", default-features = false, features = ["clock"] }
 dyn-fmt = "0.4.0"

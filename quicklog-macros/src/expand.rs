@@ -52,7 +52,7 @@ impl Codegen {
                     let mut logger = quicklog::logger();
                     let now = quicklog::Quicklog::now();
                     let size = quicklog::queue::log_header_size();
-                    let chunk = logger.sender.prepare_write(size)?;
+                    let chunk = logger.prepare_write().start_write(size)?;
                     let mut cursor = quicklog::queue::Cursor::new(chunk);
 
                     let header = quicklog::queue::LogHeader::new(&META, now, quicklog::queue::ArgsKind::Normal(0));
@@ -90,7 +90,7 @@ impl Codegen {
             // Entire format string + format args are wrapped into one argument
             (
                 quote! {
-                    let #ident = quicklog::str_format!(fmt_buffer, #original_fmt_str #fmt_args);
+                    let #ident = quicklog::queue::format_in(fmt_buffer, format_args!(#original_fmt_str #fmt_args));
                 },
                 quote! { cursor.write_str(#ident)?; },
                 "{}".to_string(),
@@ -109,7 +109,7 @@ impl Codegen {
                     let formatter = f.formatter();
                     let ident = ident_gen.gen();
                     Some(quote! {
-                        let #ident = quicklog::str_format!(fmt_buffer, #formatter, #arg);
+                        let #ident = quicklog::queue::format_in(fmt_buffer, format_args!(#formatter, #arg));
                     })
                 } else {
                     None
@@ -223,10 +223,11 @@ impl Codegen {
         let prologue = quote! {
             let mut logger = quicklog::logger();
             let now = quicklog::Quicklog::now();
-            let fmt_buffer = &logger.fmt_buffer;
+            let mut state = logger.prepare_write();
+            let fmt_buffer = state.fmt_buffer;
             #eager_fmt
             let size = #get_total_sizes;
-            let chunk = logger.sender.prepare_write(size)?;
+            let chunk = state.start_write(size)?;
             let mut cursor = quicklog::queue::Cursor::new(chunk);
 
             let header = quicklog::queue::LogHeader::new(&META, now, #args_kind);

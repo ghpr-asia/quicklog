@@ -205,11 +205,11 @@ use bumpalo::Bump;
 use dyn_fmt::AsStrFormatExt;
 use minstant::Instant;
 use once_cell::unsync::Lazy;
-use queue::Cursor;
 use queue::{
     ArgsKind, Consumer, FlushError, FlushResult, LogArgType, LogHeader, Metadata, Producer, Queue,
     ReadError,
 };
+use queue::{Cursor, QueueError};
 use serialize::DecodeFn;
 
 pub use ::bumpalo::collections::String as BumpString;
@@ -316,15 +316,30 @@ impl Default for Clock {
     }
 }
 
+/// Contains data needed in preparation for writing to the queue.
+pub struct WriteStart<'write> {
+    producer: &'write mut Producer,
+    pub fmt_buffer: &'write Bump,
+}
+
+impl<'write> WriteStart<'write> {
+    /// Consumes self to signify start of write to queue -- all arguments should
+    /// have been preprocessed (if required) and required sizes computed by this
+    /// point.
+    #[inline]
+    pub fn start_write(self, n: usize) -> Result<&'write mut [u8], QueueError> {
+        self.producer.prepare_write(n)
+    }
+}
+
 /// Main logging handler.
 pub struct Quicklog {
     flusher: Box<dyn Flush>,
     formatter: Box<dyn PatternFormatter>,
     clock: Clock,
-    // TODO: see if we can avoid making this public
-    pub sender: Producer,
+    sender: Producer,
     receiver: Consumer,
-    pub fmt_buffer: Bump,
+    fmt_buffer: Bump,
 }
 
 impl Quicklog {
@@ -423,6 +438,15 @@ impl Quicklog {
         self.receiver.commit_read();
 
         Ok(())
+    }
+
+    /// Returns data needed in preparation for writing to the queue.
+    #[inline]
+    pub fn prepare_write(&mut self) -> WriteStart<'_> {
+        WriteStart {
+            producer: &mut self.sender,
+            fmt_buffer: &self.fmt_buffer,
+        }
     }
 
     /// Marks write as complete and commits it for reading.
