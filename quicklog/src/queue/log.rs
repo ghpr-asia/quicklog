@@ -5,7 +5,7 @@ use std::{
 
 use bumpalo::Bump;
 
-use crate::{level::Level, serialize::DecodeEachFn, utils::any_as_bytes, BumpString, Instant};
+use crate::{level::Level, serialize::DecodeEachFn, BumpString, Instant};
 
 use super::{ChunkRead, ChunkWrite, ReadError, ReadResult};
 
@@ -160,15 +160,7 @@ impl ChunkRead for LogHeader<'_> {
     }
 }
 
-impl ChunkWrite for LogHeader<'_> {
-    #[inline]
-    fn write(&self, buf: &mut [u8]) -> usize {
-        let (chunk, _) = buf.split_at_mut(self.bytes_required());
-        chunk.copy_from_slice(any_as_bytes(self));
-
-        chunk.len()
-    }
-}
+impl ChunkWrite for LogHeader<'_> {}
 
 /// Header for logging arguments using their
 /// [`Serialize`](crate::serialize::Serialize) implementation.
@@ -180,15 +172,7 @@ pub struct SerializeArgHeader {
     pub decode_fn: usize,
 }
 
-impl ChunkWrite for SerializeArgHeader {
-    #[inline]
-    fn write(&self, buf: &mut [u8]) -> usize {
-        let (chunk, _) = buf.split_at_mut(self.bytes_required());
-        chunk.copy_from_slice(any_as_bytes(self));
-
-        chunk.len()
-    }
-}
+impl ChunkWrite for SerializeArgHeader {}
 
 /// Header for logging arguments which are formatted into the buffer.
 #[derive(Debug)]
@@ -198,15 +182,7 @@ pub struct FmtArgHeader {
     pub size_of_arg: usize,
 }
 
-impl ChunkWrite for FmtArgHeader {
-    #[inline]
-    fn write(&self, buf: &mut [u8]) -> usize {
-        let (chunk, _) = buf.split_at_mut(self.bytes_required());
-        chunk.copy_from_slice(any_as_bytes(self));
-
-        chunk.len()
-    }
-}
+impl ChunkWrite for FmtArgHeader {}
 
 #[inline]
 pub const fn log_header_size() -> usize {

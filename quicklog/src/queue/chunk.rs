@@ -2,13 +2,10 @@ use std::mem::size_of;
 
 use crate::{
     serialize::{DecodeEachFn, DecodeFn, Serialize},
-    utils::unlikely,
+    utils::{any_as_bytes, unlikely},
 };
 
 use super::{FlushError, FmtArgHeader, LogArgType, SerializeArgHeader};
-
-/// Result from pushing onto queue.
-pub type WriteResult<T> = Result<T, WriteError>;
 
 /// Result from reading from queue.
 pub type ReadResult<T> = Result<T, ReadError>;
@@ -59,14 +56,23 @@ pub trait ChunkWrite {
     /// Writes an implementing type into the buffer.
     ///
     /// NOTE: this assumes that `buf` has sufficient capacity.
-    fn write(&self, buf: &mut [u8]) -> usize;
-    /// The amount of bytes required to write the implementing type.
     #[inline]
-    fn bytes_required(&self) -> usize
+    fn write(&self, buf: &mut [u8]) -> usize
     where
         Self: Sized,
     {
-        size_of::<Self>()
+        let to_copy = any_as_bytes(self);
+        let copy_len = to_copy.len();
+        debug_assert!(buf.len() >= copy_len);
+
+        // SAFETY: We requested the exact amount required from the queue, so
+        // should not run out of space here.
+        unsafe {
+            buf.as_mut_ptr()
+                .copy_from_nonoverlapping(to_copy.as_ptr(), copy_len);
+        }
+
+        copy_len
     }
 }
 
@@ -78,34 +84,22 @@ impl<T: Serialize> ChunkWrite for T {
 
         buf_len - rest.len()
     }
-
-    #[inline]
-    fn bytes_required(&self) -> usize {
-        self.buffer_size_required()
-    }
 }
 
 impl ChunkWrite for &[u8] {
     #[inline]
     fn write(&self, buf: &mut [u8]) -> usize {
         let n = self.len();
-        let (chunk, _) = buf.split_at_mut(n);
-        chunk.copy_from_slice(self);
+        debug_assert!(buf.len() >= n);
+
+        // SAFETY: We requested the exact amount required from the queue, so
+        // should not run out of space here.
+        unsafe {
+            buf.as_mut_ptr().copy_from_nonoverlapping(self.as_ptr(), n);
+        }
 
         n
     }
-
-    #[inline]
-    fn bytes_required(&self) -> usize {
-        self.len()
-    }
-}
-
-/// Error writing to the queue.
-#[derive(Copy, Clone, Debug)]
-pub enum WriteError {
-    /// Queue does not have sufficient capacity to be written to.
-    NotEnoughSpace,
 }
 
 /// Error reading from the queue.
@@ -214,43 +208,35 @@ where
 impl Cursor<&mut [u8]> {
     /// Writes an argument implementing [`Serialize`], along with its header.
     #[inline]
-    pub fn write_serialize<T: Serialize>(&mut self, arg: &T) -> WriteResult<()> {
+    pub fn write_serialize<T: Serialize>(&mut self, arg: &T) {
         let header = SerializeArgHeader {
             type_of_arg: LogArgType::Serialize,
             size_of_arg: arg.buffer_size_required(),
             decode_fn: <T as Serialize>::decode as usize,
         };
-        self.write(&header)?;
-        self.write(arg)
+        self.write(&header);
+        self.write(arg);
     }
 
     /// Writes a formatted string along with its header.
     #[inline]
-    pub fn write_str(&mut self, s: impl AsRef<str>) -> WriteResult<()> {
+    pub fn write_str(&mut self, s: impl AsRef<str>) {
         let formatted = s.as_ref();
         let header = FmtArgHeader {
             type_of_arg: LogArgType::Fmt,
             size_of_arg: formatted.len(),
         };
-        self.write(&header)?;
-        self.write(&formatted.as_bytes())?;
-
-        Ok(())
+        self.write(&header);
+        self.write(&formatted.as_bytes());
     }
 
     /// Writes a type implementing [`ChunkWrite`] by writing through the
     /// underlying buffer(s).
     #[inline]
-    pub fn write<T: ChunkWrite>(&mut self, arg: &T) -> WriteResult<()> {
-        let required_size = arg.bytes_required();
+    pub fn write<T: ChunkWrite>(&mut self, arg: &T) {
         let buf = self.remaining_slice();
-        if unlikely(buf.len() < required_size) {
-            return Err(WriteError::NotEnoughSpace);
-        }
-
         let written = arg.write(buf);
         self.pos += written;
-        Ok(())
     }
 
     #[inline]

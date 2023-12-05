@@ -209,7 +209,7 @@ use queue::{
     ArgsKind, Consumer, FlushError, FlushResult, LogArgType, LogHeader, Metadata, Producer, Queue,
     ReadError,
 };
-use queue::{Cursor, QueueError, WriteError};
+use queue::{Cursor, QueueError};
 use serialize::DecodeFn;
 
 pub use ::bumpalo::collections::String as BumpString;
@@ -503,6 +503,6 @@ impl Default for Quicklog {
 /// not expanded inline.
 #[inline(never)]
 #[cold]
-pub fn log_wrapper<F: FnOnce() -> Result<(), WriteError>>(f: F) -> Result<(), WriteError> {
+pub fn log_wrapper<F: FnOnce() -> Result<(), QueueError>>(f: F) -> Result<(), QueueError> {
     f()
 }

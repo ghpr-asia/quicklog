@@ -56,7 +56,7 @@ impl Codegen {
                     let mut cursor = quicklog::queue::Cursor::new(chunk);
 
                     let header = quicklog::queue::LogHeader::new(&META, now, quicklog::queue::ArgsKind::Normal(0));
-                    cursor.write(&header)?;
+                    cursor.write(&header);
                 },
                 metadata,
                 fmt_args: quote! {},
@@ -92,7 +92,7 @@ impl Codegen {
                 quote! {
                     let #ident = quicklog::queue::format_in(fmt_buffer, format_args!(#original_fmt_str #fmt_args));
                 },
-                quote! { cursor.write_str(#ident)?; },
+                quote! { cursor.write_str(#ident); },
                 "{}".to_string(),
             )
         } else {
@@ -164,7 +164,7 @@ impl Codegen {
                 .collect();
             let args_kind =
                 quote! { quicklog::queue::ArgsKind::AllSerialize(_decode_fn(&(#(&#args,)*))) };
-            let write = quote! { cursor.write(&(#(&#args,)*))?; };
+            let write = quote! { cursor.write(&(#(&#args,)*)); };
 
             (args_kind, write)
         } else {
@@ -186,16 +186,16 @@ impl Codegen {
                     PrefixedField::Unnamed(i) => match i {
                         PrefixedArg::Debug(_) | PrefixedArg::Display(_) => {
                             let ident = ident_iter.next()?;
-                            Some(quote! { cursor.write_str(#ident)?; })
+                            Some(quote! { cursor.write_str(#ident); })
                         }
-                        PrefixedArg::Serialize(a) => Some(quote! { cursor.write_serialize(&#a)?; }),
+                        PrefixedArg::Serialize(a) => Some(quote! { cursor.write_serialize(&#a); }),
                     },
                     PrefixedField::Named(f) => match &f.arg {
                         PrefixedArg::Debug(_) | PrefixedArg::Display(_) => {
                             let ident = ident_iter.next()?;
-                            Some(quote! { cursor.write_str(#ident)?; })
+                            Some(quote! { cursor.write_str(#ident); })
                         }
-                        PrefixedArg::Serialize(a) => Some(quote! { cursor.write_serialize(&#a)?; }),
+                        PrefixedArg::Serialize(a) => Some(quote! { cursor.write_serialize(&#a); }),
                     },
                 })
                 .collect();
@@ -231,7 +231,7 @@ impl Codegen {
             let mut cursor = quicklog::queue::Cursor::new(chunk);
 
             let header = quicklog::queue::LogHeader::new(&META, now, #args_kind);
-            cursor.write(&header)?;
+            cursor.write(&header);
         };
 
         // Metadata construction
@@ -327,7 +327,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
                 let commit_size = cursor.finish();
                 #finish
 
-                Ok::<(), quicklog::queue::WriteError>(())
+                Ok::<(), quicklog::queue::QueueError>(())
             })
         } else {
             Ok(())

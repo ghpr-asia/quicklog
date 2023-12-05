@@ -20,14 +20,6 @@ pub enum QueueError {
     NotEnoughSpace,
 }
 
-impl From<QueueError> for WriteError {
-    fn from(value: QueueError) -> Self {
-        match value {
-            QueueError::NotEnoughSpace => WriteError::NotEnoughSpace,
-        }
-    }
-}
-
 /// Single-producer, single-consumer queue.
 pub struct Queue {
     _buf: Vec<u8>,
@@ -81,6 +73,7 @@ pub struct Producer {
 impl Producer {
     /// Returns a slice from the queue for writing. Errors if the remaining
     /// space in the queue is less than `n`.
+    #[inline]
     pub fn prepare_write(&mut self, n: usize) -> Result<&mut [u8], QueueError> {
         let tail = self.writer_pos.get();
         let head = self.reader_pos.get();
@@ -106,18 +99,21 @@ impl Producer {
     }
 
     /// Advances the local pointer for this writer.
+    #[inline]
     pub fn finish_write(&mut self, n: usize) {
         let writer_pos = self.writer_pos.get();
         self.writer_pos.set(writer_pos.wrapping_add(n));
     }
 
     /// Commits written slots to be available for reading.
+    #[inline]
     pub fn commit_write(&mut self) {
         self.queue
             .atomic_writer_pos
             .store(self.writer_pos.get(), Ordering::Release);
     }
 
+    #[inline]
     pub fn writer_pos(&self) -> usize {
         self.writer_pos.get()
     }
@@ -135,6 +131,7 @@ pub struct Consumer {
 impl Consumer {
     /// Returns a slice from the queue for reading. Errors if there is nothing
     /// to read from the queue.
+    #[inline]
     pub fn prepare_read(&mut self) -> Result<&[u8], QueueError> {
         let tail = self.writer_pos.get();
         let head = self.reader_pos.get();
@@ -157,12 +154,14 @@ impl Consumer {
     }
 
     /// Advances the local pointer for this reader.
+    #[inline]
     pub fn finish_read(&mut self, n: usize) {
         let reader_pos = self.reader_pos.get();
         self.reader_pos.set(reader_pos.wrapping_add(n));
     }
 
     /// Commits read slots to be available for writing.
+    #[inline]
     pub fn commit_read(&mut self) {
         self.queue
             .atomic_reader_pos
