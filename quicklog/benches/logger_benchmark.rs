@@ -4,8 +4,7 @@ use std::time::Duration;
 
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use lazy_format::make_lazy_format;
-use once_cell::sync::Lazy;
-use quicklog::{with_flush, NoopFlusher};
+use quicklog::{init, with_flush, NoopFlusher};
 use recycle_box::{coerce_box, RecycleBox};
 
 mod common;
@@ -109,7 +108,7 @@ fn bench_clock(b: &mut Bencher) {
 
 fn bench_channel_send(b: &mut Bencher) {
     type Object = Box<Nested>;
-    static mut CHANNEL: Lazy<(Sender<Object>, Receiver<Object>)> = Lazy::new(channel);
+    let channel: (Sender<Object>, Receiver<Object>) = channel();
     let bs = black_box(BigStruct {
         vec: [1; 100],
         some: "The quick brown fox jumps over the lazy dog",
@@ -118,19 +117,15 @@ fn bench_channel_send(b: &mut Bencher) {
     let mut senders = Vec::new();
     for _ in 0..10 {
         nested.vec.push(bs);
-        unsafe {
-            senders.push(CHANNEL.0.clone());
-        }
+        senders.push(channel.0.clone());
     }
     loop_with_cleanup!(
         b,
         {
             let arg = nested.clone();
-            unsafe {
-                CHANNEL.0.send(Box::new(arg)).unwrap_or(());
-            }
+            channel.0.send(Box::new(arg)).unwrap_or(());
         },
-        { while unsafe { CHANNEL.1.recv_timeout(Duration::from_millis(10)).is_ok() } {} }
+        { while channel.1.recv_timeout(Duration::from_millis(10)).is_ok() {} }
     )
 }
 
@@ -163,6 +158,7 @@ fn bench_format_nested_struct(b: &mut Bencher) {
 }
 
 fn bench_logger_no_args(b: &mut Bencher) {
+    init!();
     with_flush!(NoopFlusher);
     loop_with_cleanup!(
         b,
@@ -175,6 +171,7 @@ fn bench_logger_serialize(b: &mut Bencher) {
         vec: [1; 100],
         some: "The quick brown fox jumps over the lazy dog",
     });
+    init!();
     with_flush!(NoopFlusher);
     loop_with_cleanup!(b, quicklog::info!(bs, "Here's some text"));
 }
@@ -192,6 +189,7 @@ fn bench_logger_pass_by_ref(b: &mut Bencher) {
         vec: [1; 100],
         some: "The quick brown fox jumps over the lazy dog",
     });
+    init!();
     with_flush!(NoopFlusher);
     loop_with_cleanup!(b, quicklog::info!(a = ?&bs, "Here's some text"));
 }

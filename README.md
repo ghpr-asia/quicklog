@@ -174,6 +174,21 @@ fn main() {
 }
 ```
 
+### Configuring max logging queue capacity
+
+By default, `quicklog` uses a queue with a capacity of 1MB to store written messages. To specify a different size, pass the desired size to the `init` macro on first initialization:
+
+```rust no_run
+use quicklog::init;
+
+fn main() {
+    // 10MB queue
+    init!(10 * 1024 * 1024);
+
+    // log some data...
+}
+```
+
 ### More examples
 
 More usage examples are available [here](quicklog/examples). Some notable ones are:

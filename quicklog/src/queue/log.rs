@@ -206,7 +206,7 @@ pub fn log_size_required(args: &[(LogArgType, usize)]) -> usize {
     size_required
 }
 
-/// Allocates a formatted [`bumpalo`](crate::bumpalo) string.
+/// Allocates a formatted [`bumpalo`] string.
 #[inline]
 pub fn format_in<'bump>(bump: &'bump Bump, args: Arguments<'_>) -> BumpString<'bump> {
     let mut s = BumpString::with_capacity_in(2048, bump);

@@ -30,14 +30,17 @@ macro_rules! with_flush_into_file {
     }};
 }
 
-/// Initializes Quicklog by calling [`Quicklog::init()`]. **NOTE**: This should
-/// only be called once in the application!
+/// Initializes Quicklog by calling [`Quicklog::init()`]. You should only need
+/// to call this once in the application.
 ///
 /// [`Quicklog::init()`]: crate::Quicklog::init
 #[macro_export]
 macro_rules! init {
     () => {
         $crate::Quicklog::init();
+    };
+    ($capacity:expr) => {
+        $crate::Quicklog::init_with_capacity($capacity);
     };
 }
 

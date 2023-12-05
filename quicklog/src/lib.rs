@@ -47,6 +47,29 @@
 //! }
 //! ```
 //!
+//! The default size used for the backing queue used by `quicklog` is 1MB. To
+//! specify a different size, pass the desired size to the [`init`] macro.
+//!
+//! ```no_run
+//! # use quicklog::{init, info};
+//! fn main() {
+//!     let sz = 10 * 1024 * 1024;
+//!
+//!     // 10MB
+//!     init!(sz);
+//!
+//!     let mut a = Vec::with_capacity(sz);
+//!     for i in 0..sz {
+//!         a[i] = i;
+//!     }
+//!
+//!     // log big struct
+//!     info!(a, "inspecting some big data");
+//! }
+//! ```
+//!
+//! Note that this size may be rounded up or adjusted for better performance.
+//!
 //! # Macros
 //!
 //! ### Shorthand Macros
@@ -144,17 +167,6 @@
 //! # }
 //! ```
 //!
-//! # Environment variables
-//!
-//! There are two environment variables you can set:
-//!
-//! 1. `QUICKLOG_MAX_LOGGER_CAPACITY`
-//!     - sets the size of the spsc ring buffer used for logging
-//! 2. `QUICKLOG_MAX_SERIALIZE_BUFFER_CAPACITY`
-//!     - sets the size of the byte buffer used for static serialization
-//!     - this can be increased when you run into issues out of memory in debug
-//!     when conducting load testing
-//!
 //! # Components
 //!
 //! ## quicklog-flush
@@ -204,13 +216,12 @@ pub mod utils;
 use bumpalo::Bump;
 use dyn_fmt::AsStrFormatExt;
 use minstant::Instant;
-use once_cell::unsync::Lazy;
 use queue::{
-    ArgsKind, Consumer, FlushError, FlushResult, LogArgType, LogHeader, Metadata, Producer, Queue,
-    ReadError,
+    ArgsKind, Consumer, Cursor, FlushError, FlushResult, LogArgType, LogHeader, Metadata, Producer,
+    Queue, QueueError, ReadError,
 };
-use queue::{Cursor, QueueError};
 use serialize::DecodeFn;
+use std::cell::OnceCell;
 
 pub use ::bumpalo::collections::String as BumpString;
 
@@ -226,14 +237,22 @@ pub use quicklog_macros::{
 
 /// Logger initialized to [`Quicklog`].
 #[doc(hidden)]
-static mut LOGGER: Lazy<Quicklog> = Lazy::new(Quicklog::default);
+static mut LOGGER: OnceCell<Quicklog> = OnceCell::new();
+
+const MAX_FMT_BUFFER_CAPACITY: usize = 1048576;
+const MAX_LOGGER_CAPACITY: usize = 1048576;
 
 /// **Internal API**
 ///
 /// Returns a mut reference to the globally static logger [`LOGGER`]
 #[doc(hidden)]
+#[inline(always)]
 pub fn logger() -> &'static mut Quicklog {
-    unsafe { &mut LOGGER }
+    unsafe {
+        LOGGER
+            .get_mut()
+            .expect("LOGGER not initialized, call `quicklog::init!()` first!")
+    }
 }
 
 /// Specifies how to format the final log record.
@@ -343,11 +362,33 @@ pub struct Quicklog {
 }
 
 impl Quicklog {
+    fn new(logger_capacity: usize) -> Self {
+        let (sender, receiver) = Queue::new(logger_capacity);
+
+        Quicklog {
+            flusher: Box::new(StdoutFlusher),
+            formatter: Box::new(QuickLogFormatter),
+            clock: Clock::default(),
+            sender,
+            receiver,
+            fmt_buffer: Bump::with_capacity(MAX_FMT_BUFFER_CAPACITY),
+        }
+    }
+
     /// Eagerly initializes the global [`Quicklog`] logger.
     /// Can be called through [`init!`] macro.
     pub fn init() {
-        // Referencing forces evaluation of Lazy
-        _ = logger();
+        unsafe {
+            _ = LOGGER.get_or_init(|| Quicklog::new(MAX_LOGGER_CAPACITY));
+        }
+    }
+
+    /// Eagerly initializes the global [`Quicklog`] logger.
+    /// Can be called through [`init!`] macro.
+    pub fn init_with_capacity(capacity: usize) {
+        unsafe {
+            _ = LOGGER.get_or_init(|| Quicklog::new(capacity));
+        }
     }
 
     /// Retrieves current timestamp (cycle count) using
@@ -468,31 +509,6 @@ impl Quicklog {
     #[inline]
     pub fn commit_write(&mut self) {
         self.sender.commit_write();
-    }
-}
-
-impl Default for Quicklog {
-    fn default() -> Self {
-        const MAX_FMT_BUFFER_CAPACITY: usize = 1048576;
-        let logger_capacity = option_env!("QUICKLOG_MAX_LOGGER_CAPACITY")
-            .and_then(|c| match c.parse::<usize>() {
-                Ok(p) => Some(p),
-                Err(_) => {
-                    eprintln!("Failed to parse value of QUICKLOG_MAX_LOGGER_CAPACITY; defaulting to 1048576B.");
-                    None
-                }
-            })
-            .unwrap_or(1048576);
-        let (sender, receiver) = Queue::new(logger_capacity);
-
-        Quicklog {
-            flusher: Box::new(StdoutFlusher),
-            formatter: Box::new(QuickLogFormatter),
-            clock: Clock::default(),
-            sender,
-            receiver,
-            fmt_buffer: Bump::with_capacity(MAX_FMT_BUFFER_CAPACITY),
-        }
     }
 }
 
