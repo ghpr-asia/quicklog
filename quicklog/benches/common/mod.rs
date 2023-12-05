@@ -62,6 +62,7 @@ impl Serialize for BigStruct {
         (format!("{:?}", bs), rest)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         std::mem::size_of::<Self>()
     }
@@ -83,6 +84,7 @@ impl Serialize for Nested {
         (format!("Nested {{ vec: {:?} }}", vec), rest)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         self.vec.buffer_size_required()
     }

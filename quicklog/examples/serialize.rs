@@ -120,6 +120,7 @@ impl Serialize for ManualSerializeStruct<'_> {
         )
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         // Manually compute size of pointer, since we just copy the pointer
         // in this case (instead of utilizing the default `Serialize`

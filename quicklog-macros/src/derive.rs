@@ -28,6 +28,7 @@ use syn::{
 ///
 /// // Generated code (slightly simplified)
 /// impl quicklog::serialize::Serialize for TestStruct {
+///     #[inline]
 ///     fn encode<'buf>(
 ///         &self,
 ///         write_buf: &'buf mut [u8],
@@ -50,6 +51,7 @@ use syn::{
 ///             read_buf,
 ///         )
 ///     }
+///     #[inline]
 ///     fn buffer_size_required(&self) -> usize {
 ///         let TestStruct { a, b, c } = self;
 ///         a.buffer_size_required() + b.buffer_size_required()
@@ -74,6 +76,7 @@ use syn::{
 ///
 /// // Generated code (slightly simplified)
 /// impl quicklog::serialize::Serialize for TestEnum {
+///     #[inline]
 ///     fn encode<'buf>(
 ///         &self,
 ///         write_buf: &'buf mut [u8],
@@ -139,6 +142,7 @@ use syn::{
 ///             i => unimplemented!("unknown variant type decoded from buffer: {}", i),
 ///         }
 ///     }
+///     #[inline]
 ///     fn buffer_size_required(&self) -> usize {
 ///         match self {
 ///             Self::Foo(x) => std::mem::size_of::<usize>() + x.buffer_size_required(),
@@ -276,6 +280,7 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
 
     quote! {
         impl #impl_generics quicklog::serialize::Serialize for #ty_name #ty_generics #where_clause {
+            #[inline]
             fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
                 #initial_split
 
@@ -288,6 +293,7 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
                 #decode
             }
 
+            #[inline]
             fn buffer_size_required(&self) -> usize {
                 #buffer_size_required
             }

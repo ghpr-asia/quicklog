@@ -56,7 +56,13 @@ pub trait Serialize {
     /// the remainder of `read_buf` pass in that was not read.
     fn decode(read_buf: &[u8]) -> (String, &[u8]);
     /// The number of bytes required to `encode` the type into a byte buffer.
-    fn buffer_size_required(&self) -> usize;
+    #[inline]
+    fn buffer_size_required(&self) -> usize
+    where
+        Self: Sized,
+    {
+        size_of::<Self>()
+    }
 }
 
 /// **WARNING: this is part of the public API and is primarily to aid in macro
@@ -83,6 +89,7 @@ pub const SIZE_LENGTH: usize = size_of::<usize>();
 macro_rules! gen_serialize {
     ($primitive:ty) => {
         impl Serialize for $primitive {
+            #[inline]
             fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
                 let size = size_of::<$primitive>();
                 let (x, rest) = write_buf.split_at_mut(size);
@@ -96,10 +103,6 @@ macro_rules! gen_serialize {
                 let x = <$primitive>::from_le_bytes(chunk.try_into().unwrap());
 
                 (format!("{}", x), rest)
-            }
-
-            fn buffer_size_required(&self) -> usize {
-                size_of::<$primitive>()
             }
         }
     };
@@ -123,8 +126,9 @@ gen_serialize!(f32);
 gen_serialize!(f64);
 
 impl Serialize for bool {
+    #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-        let (chunk, rest) = write_buf.split_at_mut(size_of::<bool>());
+        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
         chunk.copy_from_slice(&(*self as u8).to_le_bytes());
 
         rest
@@ -136,15 +140,12 @@ impl Serialize for bool {
 
         (format!("{}", x), rest)
     }
-
-    fn buffer_size_required(&self) -> usize {
-        size_of::<bool>()
-    }
 }
 
 impl Serialize for char {
+    #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-        let (chunk, rest) = write_buf.split_at_mut(size_of::<char>());
+        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
         chunk.copy_from_slice(&(*self as u32).to_le_bytes());
 
         rest
@@ -157,13 +158,10 @@ impl Serialize for char {
 
         (format!("{}", c), rest)
     }
-
-    fn buffer_size_required(&self) -> usize {
-        size_of::<char>()
-    }
 }
 
 impl Serialize for &str {
+    #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         let str_len = self.len();
         let (chunk, rest) = write_buf.split_at_mut(str_len + SIZE_LENGTH);
@@ -185,12 +183,14 @@ impl Serialize for &str {
         (s.to_string(), rest)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         SIZE_LENGTH + self.len()
     }
 }
 
 impl Serialize for Cow<'_, str> {
+    #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         self.as_ref().encode(write_buf)
     }
@@ -199,12 +199,14 @@ impl Serialize for Cow<'_, str> {
         <&str as Serialize>::decode(read_buf)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         self.as_ref().buffer_size_required()
     }
 }
 
 impl Serialize for String {
+    #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         self.as_str().encode(write_buf)
     }
@@ -213,12 +215,14 @@ impl Serialize for String {
         <&str as Serialize>::decode(read_buf)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         self.as_str().buffer_size_required()
     }
 }
 
 impl<T: Serialize> Serialize for &T {
+    #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         (*self).encode(write_buf)
     }
@@ -227,12 +231,14 @@ impl<T: Serialize> Serialize for &T {
         <T as Serialize>::decode(read_buf)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         (*self).buffer_size_required()
     }
 }
 
 impl<T: Serialize> Serialize for Vec<T> {
+    #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
         let (len_chunk, mut vec_chunk) = chunk.split_at_mut(SIZE_LENGTH);
@@ -261,12 +267,14 @@ impl<T: Serialize> Serialize for Vec<T> {
         (format!("{:?}", vec), chunk)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         self.get(0).map(|a| a.buffer_size_required()).unwrap_or(0) * self.len() + SIZE_LENGTH
     }
 }
 
 impl<T: Serialize> Serialize for Box<T> {
+    #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         self.as_ref().encode(write_buf)
     }
@@ -275,12 +283,14 @@ impl<T: Serialize> Serialize for Box<T> {
         <T as Serialize>::decode(read_buf)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         self.as_ref().buffer_size_required()
     }
 }
 
 impl<T: Serialize> Serialize for Option<T> {
+    #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
         let chunk_ptr = chunk.as_mut_ptr();
@@ -317,6 +327,7 @@ impl<T: Serialize> Serialize for Option<T> {
         (result, chunk)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         size_of::<u8>()
             + self
@@ -327,6 +338,7 @@ impl<T: Serialize> Serialize for Option<T> {
 }
 
 impl<T: Serialize, E: Serialize> Serialize for Result<T, E> {
+    #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
         let chunk_ptr = chunk.as_mut_ptr();
@@ -373,6 +385,7 @@ impl<T: Serialize, E: Serialize> Serialize for Result<T, E> {
         (result, chunk)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         size_of::<u8>()
             + match self {
@@ -412,6 +425,7 @@ macro_rules! tuple_serialize {
         impl<$($name: Serialize),*> Serialize for ($($name,)*) {
             #[allow(non_snake_case)]
             #[allow(unused)]
+            #[inline]
             fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
                 let ($(ref $name,)*) = *self;
                 let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
@@ -428,6 +442,7 @@ macro_rules! tuple_serialize {
             }
 
             #[allow(non_snake_case)]
+            #[inline]
             fn buffer_size_required(&self) -> usize {
                 let ($(ref $name,)*) = *self;
                 let mut size = 0;

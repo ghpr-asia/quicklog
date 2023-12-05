@@ -23,6 +23,7 @@ impl Serialize for S {
         i32::decode(read_buf)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         self.i.buffer_size_required()
     }

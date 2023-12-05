@@ -80,6 +80,7 @@ impl Serialize for Something {
         (format!("Something {{ some_str: {} }}", output), rest)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         self.some_str.buffer_size_required()
     }
@@ -131,6 +132,7 @@ impl Serialize for SerializeStruct {
         <&str as Serialize>::decode(read_buf)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         self.symbol.as_str().buffer_size_required()
     }
@@ -172,6 +174,7 @@ impl Serialize for BigStruct {
         (format!("vec: {:?}, str: {}", arr, s), rest)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         std::mem::size_of::<i32>() * 100 + self.some.buffer_size_required()
     }

@@ -46,6 +46,7 @@ impl<const N: usize> Serialize for ArrStruct<N> {
         (format!("ArrStruct {{ arr: {:?} }}", arr), rest)
     }
 
+    #[inline]
     fn buffer_size_required(&self) -> usize {
         size_of::<u64>() * N
     }
