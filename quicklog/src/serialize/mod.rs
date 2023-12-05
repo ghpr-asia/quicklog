@@ -1,4 +1,8 @@
-use std::{borrow::Cow, mem::size_of, str::from_utf8};
+use std::{
+    borrow::Cow,
+    mem::{size_of, MaybeUninit},
+    str::from_utf8,
+};
 
 /// Allows specification of a custom way to serialize the Struct.
 ///
@@ -234,6 +238,44 @@ impl<T: Serialize> Serialize for &T {
     #[inline]
     fn buffer_size_required(&self) -> usize {
         (*self).buffer_size_required()
+    }
+}
+
+impl<const N: usize, T: Serialize> Serialize for [T; N] {
+    #[inline]
+    fn encode<'buf>(&self, mut write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
+        for i in self {
+            write_buf = i.encode(write_buf);
+        }
+
+        write_buf
+    }
+
+    fn decode(mut read_buf: &[u8]) -> (String, &[u8]) {
+        let decoded = {
+            let mut decoded_all: [MaybeUninit<String>; N] =
+                unsafe { MaybeUninit::uninit().assume_init() };
+            let mut decoded;
+
+            for elem in &mut decoded_all[..] {
+                // TODO(speed): very slow! should revisit whether really want
+                // `decode` to return String.
+                (decoded, read_buf) = T::decode(read_buf);
+                elem.write(decoded);
+            }
+
+            // NOTE: transmute for const arrays doesn't seem to work currently: Need
+            // https://doc.rust-lang.org/std/mem/union.MaybeUninit.html#method.array_assume_init
+            // which is unstable
+            decoded_all.map(|x| unsafe { x.assume_init() })
+        };
+
+        (format!("{:?}", decoded), read_buf)
+    }
+
+    #[inline]
+    fn buffer_size_required(&self) -> usize {
+        self.get(0).map(|a| a.buffer_size_required()).unwrap_or(0) * self.len()
     }
 }
 
@@ -667,6 +709,15 @@ mod tests {
             ),
             &buf
         );
+    }
+
+    #[test]
+    fn serialize_arr() {
+        let a = ["hello world", "bye world"];
+        let mut buf = [0; 256];
+        _ = a.encode(&mut buf);
+
+        decode_and_assert!(a, format!("{:?}", a), &buf);
     }
 
     #[test]
