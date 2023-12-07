@@ -310,7 +310,12 @@ impl PatternFormatter for QuickLogFormatter {
         metadata: &Metadata,
         log_record: &str,
     ) -> String {
-        format!("[{:?}][{}]{}\n", time, metadata.level, log_record)
+        format!(
+            "[{}][{}]{}\n",
+            time.format("%FT%H:%M:%S%.9f%z"),
+            metadata.level,
+            log_record
+        )
     }
 }
 
