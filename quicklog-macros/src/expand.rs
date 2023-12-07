@@ -291,11 +291,6 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
         fmt_args,
         metadata,
     } = Codegen::new(&args, &level);
-    let finish = if defer_commit {
-        quote! { logger.finish_write(commit_size); }
-    } else {
-        quote! { logger.finish_and_commit(commit_size); }
-    };
 
     let log_level_check = match level {
         Level::Info => quote! {
@@ -304,6 +299,38 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
         Level::Trace | Level::Debug | Level::Warn | Level::Error => quote! {
             quicklog::utils::unlikely(quicklog::is_level_enabled!(#level))
         },
+    };
+    let finish = if defer_commit {
+        quote! { logger.finish_write(commit_size); }
+    } else {
+        quote! { logger.finish_and_commit(commit_size); }
+    };
+
+    let log_body = quote! {
+        || {
+            #prologue
+
+            #fmt_args
+
+            #prefixed_args
+
+            let commit_size = cursor.finish();
+            #finish
+
+            Ok::<(), quicklog::queue::QueueError>(())
+        }
+    };
+    let log_wrapper = match level {
+        Level::Info => {
+            quote! {
+                (#log_body)()
+            }
+        }
+        Level::Trace | Level::Debug | Level::Warn | Level::Error => {
+            quote! {
+                quicklog::log_wrapper(#log_body)
+            }
+        }
     };
 
     quote! {{
@@ -317,18 +344,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
                 T::decode_each
             }
 
-            quicklog::log_wrapper(|| {
-                #prologue
-
-                #fmt_args
-
-                #prefixed_args
-
-                let commit_size = cursor.finish();
-                #finish
-
-                Ok::<(), quicklog::queue::QueueError>(())
-            })
+            #log_wrapper
         } else {
             Ok(())
         }
