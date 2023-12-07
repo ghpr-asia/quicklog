@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use proc_macro2::{TokenStream as TokenStream2, TokenTree};
 use quote::{quote, ToTokens};
 use syn::{
@@ -36,6 +38,12 @@ impl Parse for DotDelimitedIdent {
 impl ToTokens for DotDelimitedIdent {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
         self.0.to_tokens(tokens);
+    }
+}
+
+impl Display for DotDelimitedIdent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.into_token_stream())
     }
 }
 

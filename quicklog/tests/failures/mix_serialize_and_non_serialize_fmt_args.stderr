@@ -1,0 +1,7 @@
+error: parsing error: mixing serialize and non-serialize format specifiers in the format string is not allowed
+  --> tests/failures/mix_serialize_and_non_serialize_fmt_args.rs:12:5
+   |
+12 |     info!("mixing serialize and non-serialize args: {:^} {:?}", s1, 5);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)

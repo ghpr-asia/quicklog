@@ -18,6 +18,17 @@ fn main() {
     assert_message_equal!(info!(s), "s=Hello");
     assert_message_equal!(info!(s, "with fmt string:"), "with fmt string: s=Hello");
     assert_message_equal!(
+        info!(s, "with fmt string and arg: {:^}", s),
+        "with fmt string and arg: Hello s=Hello"
+    );
+    assert_message_equal!(
+        info!(a = ?bs, s, "with fmt string and eager + serialize prefixed: {:^} {:^}", s, s),
+        format!(
+            "with fmt string and eager + serialize prefixed: Hello Hello a={:?} s=Hello",
+            bs
+        )
+    );
+    assert_message_equal!(
         info!(s, bs, "s, bs:"),
         format!(
             "s, bs: s=Hello bs=vec: {:?}, str: {}",

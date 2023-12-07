@@ -82,6 +82,7 @@ fn main() {
     // fast -- uses `Serialize`
     info!(s, "fast logging, using Serialize");
     info!(serialize_struct = s, "fast logging, using Serialize");
+    info!("fast logging, using Serialize: serialize_struct={:^}", s);
 
     // `quicklog` provides default implementations of `Serialize` for
     // certain common data types

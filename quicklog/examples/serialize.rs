@@ -164,9 +164,16 @@ fn main() {
     // Prints "Struct deriving Serialize: derive=SerializeStruct { a: 1, b: -2, c: 3
     // }"
     info!(derive, "Struct deriving Serialize:");
+
+    // Same as above, using different syntax
+    info!("Struct deriving Serialize: derive={:^}", derive);
+
     // Prints "Struct implementing custom Serialize: manual=ManualSerializeStruct {
     // a: Hello world 1, b: 50, c: Hello world 2, d: [1, 2, 3, 4, 5] }"
     info!(manual, "Struct implementing custom Serialize:");
+
+    // Same as above, using different syntax
+    info!("Struct implementing custom Serialize: manual={:^}", manual);
 
     while let Ok(()) = flush!() {}
 }

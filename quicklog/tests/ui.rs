@@ -14,4 +14,5 @@ fn ui() {
     t.pass("tests/fields.rs");
     t.pass("tests/serialize.rs");
     t.pass("tests/defer.rs");
+    t.pass("tests/capture.rs");
 }
