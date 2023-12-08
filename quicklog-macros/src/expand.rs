@@ -151,7 +151,7 @@ impl Codegen {
         let prologue = quote! {
             let mut logger = quicklog::logger();
             let now = quicklog::Quicklog::now();
-            let state = logger.prepare_write();
+            let mut state = logger.prepare_write();
             #(#args_alloc)*
             let size = #get_total_sizes;
             let mut state = state.start_write(size)?;

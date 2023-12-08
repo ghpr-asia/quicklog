@@ -261,6 +261,7 @@ pub struct WriteState<T> {
 pub struct WritePrepare<'write> {
     pub(crate) producer: &'write mut Producer,
     pub(crate) fmt_buffer: &'write Bump,
+    pub(crate) formatted: bool,
 }
 
 impl<'write> WriteState<WritePrepare<'write>> {
@@ -274,13 +275,16 @@ impl<'write> WriteState<WritePrepare<'write>> {
         Ok(WriteState {
             state: WriteInProgress {
                 buffer: Cursor::new(buf),
+                formatted: self.state.formatted,
             },
         })
     }
 
     /// Allocates a formatted [`bumpalo`] string.
     #[inline]
-    pub fn format_in(&self, args: Arguments) -> BumpString<'write> {
+    pub fn format_in(&mut self, args: Arguments) -> BumpString<'write> {
+        self.state.formatted = true;
+
         let mut s = BumpString::with_capacity_in(2048, self.state.fmt_buffer);
         s.write_fmt(args).unwrap();
         s
@@ -290,6 +294,7 @@ impl<'write> WriteState<WritePrepare<'write>> {
 /// In the midst of writing to the queue.
 pub struct WriteInProgress<'write> {
     buffer: Cursor<&'write mut [u8]>,
+    formatted: bool,
 }
 
 impl<'write> WriteState<WriteInProgress<'write>> {
@@ -313,6 +318,7 @@ impl<'write> WriteState<WriteInProgress<'write>> {
         WriteState {
             state: WriteFinish {
                 written: self.state.buffer.finish(),
+                formatted: self.state.formatted,
             },
         }
     }
@@ -321,4 +327,5 @@ impl<'write> WriteState<WriteInProgress<'write>> {
 /// Finished writing to the queue.
 pub struct WriteFinish {
     pub(crate) written: usize,
+    pub(crate) formatted: bool,
 }

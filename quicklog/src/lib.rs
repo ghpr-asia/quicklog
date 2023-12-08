@@ -222,6 +222,7 @@ use queue::{
 };
 use serialize::DecodeFn;
 use std::cell::OnceCell;
+use utils::unlikely;
 
 pub use ::bumpalo::collections::String as BumpString;
 
@@ -478,6 +479,7 @@ impl Quicklog {
             state: WritePrepare {
                 producer: &mut self.sender,
                 fmt_buffer: &self.fmt_buffer,
+                formatted: false,
             },
         }
     }
@@ -493,7 +495,9 @@ impl Quicklog {
     #[inline]
     pub fn finish_write(&mut self, write_state: WriteState<WriteFinish>) {
         let n = write_state.state.written;
-        self.fmt_buffer.reset();
+        if unlikely(write_state.state.formatted) {
+            self.fmt_buffer.reset();
+        }
         self.sender.finish_write(n);
     }
 
