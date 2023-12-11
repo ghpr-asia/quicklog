@@ -58,6 +58,7 @@ struct Codegen {
     prologue: TokenStream2,
     write: TokenStream2,
     metadata: TokenStream2,
+    fast_path: bool,
 }
 
 impl Codegen {
@@ -124,7 +125,11 @@ impl Codegen {
 
         // After formatting, we just need to compute the required sizes for all
         // args, and then we will know how much space we need from the queue
-        let (get_total_sizes, (args_kind, write)) = Self::gen_sizes_and_write(&args_in_order);
+        let all_serialize = args_in_order
+            .iter()
+            .all(|LogArg { ty, .. }| matches!(ty, ArgType::Serialize));
+        let (get_total_sizes, (args_kind, write)) =
+            Self::gen_sizes_and_write(&args_in_order, all_serialize);
 
         // Construct format string for prefixed fields and append to original
         // format string
@@ -170,14 +175,14 @@ impl Codegen {
             prologue,
             write,
             metadata: metadata_write,
+            fast_path: all_serialize,
         })
     }
 
-    fn gen_sizes_and_write(all_args: &[LogArg]) -> (TokenStream2, (TokenStream2, TokenStream2)) {
-        let all_serialize = all_args
-            .iter()
-            .all(|LogArg { ty, .. }| matches!(ty, ArgType::Serialize));
-
+    fn gen_sizes_and_write(
+        all_args: &[LogArg],
+        all_serialize: bool,
+    ) -> (TokenStream2, (TokenStream2, TokenStream2)) {
         (
             Self::gen_sizes(all_args, all_serialize),
             Self::gen_write(all_args, all_serialize),
@@ -389,6 +394,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
         prologue,
         write,
         metadata,
+        fast_path,
     } = match Codegen::new(&args, &level) {
         Ok(c) => c,
         Err(e) => {
@@ -430,12 +436,12 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
         }
     };
     let log_wrapper = match level {
-        Level::Info => {
+        Level::Info if fast_path => {
             quote! {
                 (#log_body)()
             }
         }
-        Level::Trace | Level::Debug | Level::Warn | Level::Error => {
+        Level::Info | Level::Trace | Level::Debug | Level::Warn | Level::Error => {
             quote! {
                 quicklog::log_wrapper(#log_body)
             }
