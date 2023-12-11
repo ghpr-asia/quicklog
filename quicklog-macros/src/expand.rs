@@ -97,7 +97,7 @@ impl Codegen {
 
                 // Entire format string + format args are wrapped into one argument
                 args_alloc.push(quote! {
-                    let #ident = quicklog::queue::format_in(fmt_buffer, format_args!(#original_fmt_str #fmt_args));
+                    let #ident = state.format_in(format_args!(#original_fmt_str #fmt_args));
                 });
                 args_in_order.push(LogArg::new(ArgType::Fmt, ident.into_token_stream()));
 
@@ -117,7 +117,7 @@ impl Codegen {
             let ident = ident_gen.gen();
 
             args_alloc.push(quote! {
-                let #ident = quicklog::queue::format_in(fmt_buffer, format_args!(#formatter, #arg));
+                let #ident = state.format_in(format_args!(#formatter, #arg));
             });
             args_in_order.push(LogArg::new(ArgType::Fmt, ident.into_token_stream()));
         }
@@ -146,15 +146,13 @@ impl Codegen {
         let prologue = quote! {
             let mut logger = quicklog::logger();
             let now = quicklog::Quicklog::now();
-            let mut state = logger.prepare_write();
-            let fmt_buffer = state.fmt_buffer;
+            let state = logger.prepare_write();
             #(#args_alloc)*
             let size = #get_total_sizes;
-            let chunk = state.start_write(size)?;
-            let mut cursor = quicklog::queue::Cursor::new(chunk);
+            let mut state = state.start_write(size)?;
 
             let header = quicklog::queue::LogHeader::new(&META, now, #args_kind);
-            cursor.write(&header);
+            state.write(&header);
         };
 
         // Metadata construction
@@ -222,7 +220,7 @@ impl Codegen {
             let args: Vec<&TokenStream2> = all_args.iter().map(|arg| &arg.token).collect();
             let args_kind =
                 quote! { quicklog::queue::ArgsKind::AllSerialize(_decode_fn(&(#(&#args,)*))) };
-            let write = quote! { cursor.write(&(#(&#args,)*)); };
+            let write = quote! { state.write(&(#(&#args,)*)); };
 
             return (args_kind, write);
         }
@@ -235,8 +233,8 @@ impl Codegen {
             .map(|arg| {
                 let arg_tok = &arg.token;
                 match arg.ty {
-                    ArgType::Fmt => quote! { cursor.write_str(#arg_tok); },
-                    ArgType::Serialize => quote! {  cursor.write_serialize(&#arg_tok); },
+                    ArgType::Fmt => quote! { state.write_str(#arg_tok); },
+                    ArgType::Serialize => quote! {  state.write_serialize(&#arg_tok); },
                 }
             })
             .collect();
@@ -409,9 +407,15 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
         },
     };
     let finish = if defer_commit {
-        quote! { logger.finish_write(commit_size); }
+        quote! {
+            let finished = state.finish();
+            logger.finish_write(finished);
+        }
     } else {
-        quote! { logger.finish_and_commit(commit_size); }
+        quote! {
+            let finished = state.finish();
+            logger.finish_and_commit(finished);
+        }
     };
 
     let log_body = quote! {
@@ -420,7 +424,6 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
 
             #write
 
-            let commit_size = cursor.finish();
             #finish
 
             Ok::<(), quicklog::queue::QueueError>(())

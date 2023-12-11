@@ -218,7 +218,7 @@ use dyn_fmt::AsStrFormatExt;
 use minstant::Instant;
 use queue::{
     ArgsKind, Consumer, Cursor, FlushError, FlushResult, LogArgType, LogHeader, Metadata, Producer,
-    Queue, QueueError, ReadError,
+    Queue, QueueError, ReadError, WriteFinish, WritePrepare, WriteState,
 };
 use serialize::DecodeFn;
 use std::cell::OnceCell;
@@ -337,22 +337,6 @@ impl Default for Clock {
             anchor_time: Utc::now(),
             anchor_instant: Instant::now(),
         }
-    }
-}
-
-/// Contains data needed in preparation for writing to the queue.
-pub struct WriteStart<'write> {
-    producer: &'write mut Producer,
-    pub fmt_buffer: &'write Bump,
-}
-
-impl<'write> WriteStart<'write> {
-    /// Consumes self to signify start of write to queue -- all arguments should
-    /// have been preprocessed (if required) and required sizes computed by this
-    /// point.
-    #[inline]
-    pub fn start_write(self, n: usize) -> Result<&'write mut [u8], QueueError> {
-        self.producer.prepare_write(n)
     }
 }
 
@@ -489,23 +473,26 @@ impl Quicklog {
 
     /// Returns data needed in preparation for writing to the queue.
     #[inline]
-    pub fn prepare_write(&mut self) -> WriteStart<'_> {
-        WriteStart {
-            producer: &mut self.sender,
-            fmt_buffer: &self.fmt_buffer,
+    pub fn prepare_write(&mut self) -> WriteState<WritePrepare<'_>> {
+        WriteState {
+            state: WritePrepare {
+                producer: &mut self.sender,
+                fmt_buffer: &self.fmt_buffer,
+            },
         }
     }
 
     /// Marks write as complete and commits it for reading.
     #[inline]
-    pub fn finish_and_commit(&mut self, n: usize) {
-        self.finish_write(n);
+    pub fn finish_and_commit(&mut self, write_state: WriteState<WriteFinish>) {
+        self.finish_write(write_state);
         self.commit_write();
     }
 
     /// Marks write as complete by advancing local writer.
     #[inline]
-    pub fn finish_write(&mut self, n: usize) {
+    pub fn finish_write(&mut self, write_state: WriteState<WriteFinish>) {
+        let n = write_state.state.written;
         self.fmt_buffer.reset();
         self.sender.finish_write(n);
     }

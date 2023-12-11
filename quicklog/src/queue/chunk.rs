@@ -1,11 +1,17 @@
-use std::mem::size_of;
+use std::{
+    fmt::{Arguments, Write},
+    mem::size_of,
+};
+
+use bumpalo::Bump;
 
 use crate::{
     serialize::{DecodeEachFn, DecodeFn, Serialize},
     utils::{any_as_bytes, unlikely},
+    BumpString,
 };
 
-use super::{FlushError, FmtArgHeader, LogArgType, SerializeArgHeader};
+use super::{FlushError, FmtArgHeader, LogArgType, Producer, QueueError, SerializeArgHeader};
 
 /// Result from reading from queue.
 pub type ReadResult<T> = Result<T, ReadError>;
@@ -208,7 +214,7 @@ where
 impl Cursor<&mut [u8]> {
     /// Writes an argument implementing [`Serialize`], along with its header.
     #[inline]
-    pub fn write_serialize<T: Serialize>(&mut self, arg: &T) {
+    pub(crate) fn write_serialize<T: Serialize>(&mut self, arg: &T) {
         let header = SerializeArgHeader {
             type_of_arg: LogArgType::Serialize,
             size_of_arg: arg.buffer_size_required(),
@@ -220,7 +226,7 @@ impl Cursor<&mut [u8]> {
 
     /// Writes a formatted string along with its header.
     #[inline]
-    pub fn write_str(&mut self, s: impl AsRef<str>) {
+    pub(crate) fn write_str(&mut self, s: impl AsRef<str>) {
         let formatted = s.as_ref();
         let header = FmtArgHeader {
             type_of_arg: LogArgType::Fmt,
@@ -233,15 +239,86 @@ impl Cursor<&mut [u8]> {
     /// Writes a type implementing [`ChunkWrite`] by writing through the
     /// underlying buffer(s).
     #[inline]
-    pub fn write<T: ChunkWrite>(&mut self, arg: &T) {
+    pub(crate) fn write<T: ChunkWrite>(&mut self, arg: &T) {
         let buf = self.remaining_slice();
         let written = arg.write(buf);
         self.pos += written;
     }
 
     #[inline]
-    pub fn remaining_slice(&mut self) -> &mut [u8] {
+    fn remaining_slice(&mut self) -> &mut [u8] {
         let len = self.pos.min(self.inner.len());
         &mut self.inner[len..]
     }
+}
+
+/// Contains data needed in preparation for writing to the queue.
+pub struct WriteState<T> {
+    pub(crate) state: T,
+}
+
+/// Preparation stage of writing to the queue.
+pub struct WritePrepare<'write> {
+    pub(crate) producer: &'write mut Producer,
+    pub(crate) fmt_buffer: &'write Bump,
+}
+
+impl<'write> WriteState<WritePrepare<'write>> {
+    /// Consumes self to signify start of write to queue -- all arguments should
+    /// have been preprocessed (if required) and required sizes computed by this
+    /// point.
+    #[inline]
+    pub fn start_write(self, n: usize) -> Result<WriteState<WriteInProgress<'write>>, QueueError> {
+        let buf = self.state.producer.prepare_write(n)?;
+
+        Ok(WriteState {
+            state: WriteInProgress {
+                buffer: Cursor::new(buf),
+            },
+        })
+    }
+
+    /// Allocates a formatted [`bumpalo`] string.
+    #[inline]
+    pub fn format_in(&self, args: Arguments) -> BumpString<'write> {
+        let mut s = BumpString::with_capacity_in(2048, self.state.fmt_buffer);
+        s.write_fmt(args).unwrap();
+        s
+    }
+}
+
+/// In the midst of writing to the queue.
+pub struct WriteInProgress<'write> {
+    buffer: Cursor<&'write mut [u8]>,
+}
+
+impl<'write> WriteState<WriteInProgress<'write>> {
+    #[inline]
+    pub fn write_serialize<T: Serialize>(&mut self, arg: &T) {
+        self.state.buffer.write_serialize(arg);
+    }
+
+    #[inline]
+    pub fn write_str(&mut self, s: impl AsRef<str>) {
+        self.state.buffer.write_str(s);
+    }
+
+    #[inline]
+    pub fn write<T: ChunkWrite>(&mut self, arg: &T) {
+        self.state.buffer.write(arg);
+    }
+
+    #[inline]
+    pub fn finish(self) -> WriteState<WriteFinish> {
+        WriteState {
+            state: WriteFinish {
+                written: self.state.buffer.finish(),
+            },
+        }
+    }
+}
+
+/// Finished writing to the queue.
+pub struct WriteFinish {
+    pub(crate) written: usize,
 }
