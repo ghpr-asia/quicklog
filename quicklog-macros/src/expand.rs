@@ -148,10 +148,19 @@ impl Codegen {
 
         // Logging initializing steps: acquire logger and prepare all buffers
         // for writing to the queue
+        let state = if all_serialize {
+            quote! {
+                let mut state = logger.prepare_write_serialize();
+            }
+        } else {
+            quote! {
+                let mut state = logger.prepare_write();
+            }
+        };
         let prologue = quote! {
             let mut logger = quicklog::logger();
             let now = quicklog::Quicklog::now();
-            let mut state = logger.prepare_write();
+            #state
             #(#args_alloc)*
             let size = #get_total_sizes;
             let mut state = state.start_write(size)?;

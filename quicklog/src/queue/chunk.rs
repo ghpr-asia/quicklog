@@ -257,47 +257,119 @@ pub struct WriteState<T> {
     pub(crate) state: T,
 }
 
-/// Preparation stage of writing to the queue.
-pub struct WritePrepare<'write> {
-    pub(crate) producer: &'write mut Producer,
-    pub(crate) fmt_buffer: &'write Bump,
-    pub(crate) formatted: bool,
+pub trait PrepareState {
+    type ProgressType;
+    fn progress(self) -> Self::ProgressType;
 }
 
-impl<'write> WriteState<WritePrepare<'write>> {
+pub struct SerializePrepare;
+
+impl PrepareState for SerializePrepare {
+    type ProgressType = SerializeProgress;
+
+    #[inline]
+    fn progress(self) -> Self::ProgressType {
+        SerializeProgress
+    }
+}
+
+pub struct Prepare<'write> {
+    pub(crate) fmt_buffer: &'write Bump,
+}
+
+impl PrepareState for Prepare<'_> {
+    type ProgressType = Progress;
+
+    #[inline]
+    fn progress(self) -> Self::ProgressType {
+        Progress
+    }
+}
+
+pub trait ProgressState {
+    type FinishType;
+    fn finish(self) -> Self::FinishType;
+}
+
+pub struct SerializeProgress;
+
+impl ProgressState for SerializeProgress {
+    type FinishType = SerializeFinish;
+
+    #[inline]
+    fn finish(self) -> Self::FinishType {
+        SerializeFinish
+    }
+}
+
+pub struct Progress;
+
+impl ProgressState for Progress {
+    type FinishType = Finish;
+
+    #[inline]
+    fn finish(self) -> Self::FinishType {
+        Finish
+    }
+}
+
+pub trait FinishState {
+    #[allow(unused_variables)]
+    fn complete(&self, fmt_buffer: &mut Bump) {}
+}
+
+pub struct SerializeFinish;
+impl FinishState for SerializeFinish {}
+
+pub struct Finish;
+impl FinishState for Finish {
+    #[inline]
+    fn complete(&self, fmt_buffer: &mut Bump) {
+        fmt_buffer.reset();
+    }
+}
+
+/// Preparation stage of writing to the queue.
+pub struct WritePrepare<'write, P> {
+    pub(crate) producer: &'write mut Producer,
+    pub(crate) prepare: P,
+}
+
+impl<'write, P: PrepareState> WriteState<WritePrepare<'write, P>> {
     /// Consumes self to signify start of write to queue -- all arguments should
     /// have been preprocessed (if required) and required sizes computed by this
     /// point.
     #[inline]
-    pub fn start_write(self, n: usize) -> Result<WriteState<WriteInProgress<'write>>, QueueError> {
-        let buf = self.state.producer.prepare_write(n)?;
+    pub fn start_write(
+        self,
+        n: usize,
+    ) -> Result<WriteState<WriteInProgress<'write, P::ProgressType>>, QueueError> {
+        let buffer = Cursor::new(self.state.producer.prepare_write(n)?);
+        let progress = self.state.prepare.progress();
 
         Ok(WriteState {
-            state: WriteInProgress {
-                buffer: Cursor::new(buf),
-                formatted: self.state.formatted,
-            },
+            state: WriteInProgress { buffer, progress },
         })
     }
+}
 
+impl<'write> WriteState<WritePrepare<'write, Prepare<'write>>> {
     /// Allocates a formatted [`bumpalo`] string.
     #[inline]
     pub fn format_in(&mut self, args: Arguments) -> BumpString<'write> {
-        self.state.formatted = true;
-
-        let mut s = BumpString::with_capacity_in(2048, self.state.fmt_buffer);
+        let mut s = BumpString::with_capacity_in(2048, self.state.prepare.fmt_buffer);
         s.write_fmt(args).unwrap();
         s
     }
 }
 
 /// In the midst of writing to the queue.
-pub struct WriteInProgress<'write> {
+pub struct WriteInProgress<'write, P> {
     buffer: Cursor<&'write mut [u8]>,
-    formatted: bool,
+    progress: P,
 }
 
-impl<'write> WriteState<WriteInProgress<'write>> {
+impl<'write> WriteState<WriteInProgress<'write, Progress>> {
     #[inline]
     pub fn write_serialize<T: Serialize>(&mut self, arg: &T) {
         self.state.buffer.write_serialize(arg);
@@ -307,25 +379,27 @@ impl<'write> WriteState<WriteInProgress<'write>> {
     pub fn write_str(&mut self, s: impl AsRef<str>) {
         self.state.buffer.write_str(s);
     }
+}
 
+impl<'write, P: ProgressState> WriteState<WriteInProgress<'write, P>> {
     #[inline]
     pub fn write<T: ChunkWrite>(&mut self, arg: &T) {
         self.state.buffer.write(arg);
     }
 
     #[inline]
-    pub fn finish(self) -> WriteState<WriteFinish> {
+    pub fn finish(self) -> WriteState<WriteFinish<P::FinishType>> {
         WriteState {
             state: WriteFinish {
                 written: self.state.buffer.finish(),
-                formatted: self.state.formatted,
+                finished: self.state.progress.finish(),
             },
         }
     }
 }
 
 /// Finished writing to the queue.
-pub struct WriteFinish {
+pub struct WriteFinish<F> {
     pub(crate) written: usize,
-    pub(crate) formatted: bool,
+    pub(crate) finished: F,
 }

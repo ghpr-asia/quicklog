@@ -217,12 +217,12 @@ use bumpalo::Bump;
 use dyn_fmt::AsStrFormatExt;
 use minstant::Instant;
 use queue::{
-    ArgsKind, Consumer, Cursor, FlushError, FlushResult, LogArgType, LogHeader, Metadata, Producer,
-    Queue, QueueError, ReadError, WriteFinish, WritePrepare, WriteState,
+    ArgsKind, Consumer, Cursor, FinishState, FlushError, FlushResult, LogArgType, LogHeader,
+    Metadata, Prepare, Producer, Queue, QueueError, ReadError, SerializePrepare, WriteFinish,
+    WritePrepare, WriteState,
 };
 use serialize::DecodeFn;
 use std::cell::OnceCell;
-use utils::unlikely;
 
 pub use ::bumpalo::collections::String as BumpString;
 
@@ -474,30 +474,40 @@ impl Quicklog {
 
     /// Returns data needed in preparation for writing to the queue.
     #[inline]
-    pub fn prepare_write(&mut self) -> WriteState<WritePrepare<'_>> {
+    pub fn prepare_write_serialize(&mut self) -> WriteState<WritePrepare<'_, SerializePrepare>> {
         WriteState {
             state: WritePrepare {
                 producer: &mut self.sender,
-                fmt_buffer: &self.fmt_buffer,
-                formatted: false,
+                prepare: SerializePrepare,
+            },
+        }
+    }
+
+    /// Returns data needed in preparation for writing to the queue.
+    #[inline]
+    pub fn prepare_write(&mut self) -> WriteState<WritePrepare<'_, Prepare<'_>>> {
+        WriteState {
+            state: WritePrepare {
+                producer: &mut self.sender,
+                prepare: Prepare {
+                    fmt_buffer: &self.fmt_buffer,
+                },
             },
         }
     }
 
     /// Marks write as complete and commits it for reading.
     #[inline]
-    pub fn finish_and_commit(&mut self, write_state: WriteState<WriteFinish>) {
+    pub fn finish_and_commit<F: FinishState>(&mut self, write_state: WriteState<WriteFinish<F>>) {
         self.finish_write(write_state);
         self.commit_write();
     }
 
     /// Marks write as complete by advancing local writer.
     #[inline]
-    pub fn finish_write(&mut self, write_state: WriteState<WriteFinish>) {
+    pub fn finish_write<F: FinishState>(&mut self, write_state: WriteState<WriteFinish<F>>) {
         let n = write_state.state.written;
-        if unlikely(write_state.state.formatted) {
-            self.fmt_buffer.reset();
-        }
+        write_state.state.finished.complete(&mut self.fmt_buffer);
         self.sender.finish_write(n);
     }
 
