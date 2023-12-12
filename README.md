@@ -190,6 +190,42 @@ fn main() {
 }
 ```
 
+### Log filtering
+
+There are two ways to filter out the generation and execution of logs:
+
+1. At compile-time
+
+   - This is done by setting the `QUICKLOG_MIN_LEVEL` environment variable which will be read during program compilation. For example, setting `QUICKLOG_MIN_LEVEL=ERR` will _generate_ the code for only `error`-level logs, while the other logs expand to nothing in the final output. Some accepted values for the environment variable include `INF`, `info`, `Info`, `2` for the info level, with similar syntax for the other levels as well.
+
+2. At run-time
+   - This uses a simple function, [`set_max_level`](quicklog/src/level.rs#L133), to set the maximum log level at runtime. This allows for more dynamic interleaving of logs, for example:
+
+```rust ignore
+use quicklog::{error, info, init, level::{set_max_level, LevelFilter}};
+
+init!();
+
+// log everything
+set_max_level(LevelFilter::Trace);
+
+// recorded
+info!("hello world");
+// ...
+
+// only log errors from here on
+set_max_level(LevelFilter::Error);
+// this macro will be *expanded* during compilation, but not *executed*!
+info!("hello world");
+
+// recorded
+error!("some error!");
+```
+
+Note that compile-time filtering takes precedence over run-time filtering, since it influences whether `quicklog` will generate and expand the macro at build time in the first place. For instance, if we set `QUICKLOG_MIN_LEVEL=ERR`, then in the above program, the first `info("hello world")` will not be recorded at all. Also note that any filters set at runtime through `set_max_level` will have no effect if `QUICKLOG_MIN_LEVEL` is defined.
+
+Clearly, compile-time filtering is more restrictive than run-time filtering. However, performance-sensitive applications may still consider compile-time filtering since it avoids both a branch check and code generation for logs that one wants to filter out completely, which can have positive performance impact.
+
 ### More examples
 
 More usage examples are available [here](quicklog/examples). Some notable ones are:

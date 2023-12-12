@@ -399,6 +399,17 @@ pub(crate) fn expand(level: Level, input: TokenStream, defer_commit: bool) -> To
 
 /// Main function for expanding the components parsed from the macro call
 pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> TokenStream2 {
+    let Ok(min_log_level) = option_env!("QUICKLOG_MIN_LEVEL")
+        .map(|s| s.parse())
+        .transpose()
+    else {
+        return quote! { compile_error!("Invalid value passed to QUICKLOG_MIN_LEVEL") };
+    };
+
+    if min_log_level > Some(level) {
+        return TokenStream2::new();
+    }
+
     let Codegen {
         prologue,
         write,
@@ -413,14 +424,18 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
         }
     };
 
-    let log_level_check = match level {
-        Level::Info => quote! {
-            quicklog::utils::likely(quicklog::is_level_enabled!(#level))
-        },
-        Level::Trace | Level::Debug | Level::Warn | Level::Error => quote! {
-            quicklog::utils::unlikely(quicklog::is_level_enabled!(#level))
-        },
-    };
+    let log_level_check =
+        min_log_level
+            .is_some()
+            .then(|| quote! {})
+            .unwrap_or_else(|| match level {
+                Level::Info => quote! {
+                    quicklog::utils::likely(quicklog::is_level_enabled!(#level))
+                },
+                Level::Trace | Level::Debug | Level::Warn | Level::Error => quote! {
+                    quicklog::utils::unlikely(quicklog::is_level_enabled!(#level))
+                },
+            });
     let finish = if defer_commit {
         quote! {
             let finished = state.finish();
