@@ -44,6 +44,7 @@ pub struct Metadata {
     pub line: u32,
     pub level: Level,
     pub format_str: &'static str,
+    pub fields: &'static [&'static str],
 }
 
 impl Metadata {
@@ -54,6 +55,7 @@ impl Metadata {
         line: u32,
         level: Level,
         format_str: &'static str,
+        fields: &'static [&'static str],
     ) -> Self {
         Self {
             module_path,
@@ -61,6 +63,7 @@ impl Metadata {
             line,
             level,
             format_str,
+            fields,
         }
     }
 }

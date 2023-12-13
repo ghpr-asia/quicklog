@@ -3,9 +3,10 @@
 
 use chrono::{DateTime, Utc};
 use quicklog::{
+    formatter::PatternFormatter,
     queue::Metadata,
     serialize::{DecodeFn, Serialize},
-    Flush, PatternFormatter,
+    Flush,
 };
 
 pub(crate) struct VecFlusher {
@@ -37,6 +38,7 @@ impl PatternFormatter for TestFormatter {
         &mut self,
         time: DateTime<Utc>,
         metadata: &Metadata,
+        _: &[String],
         log_record: &str,
     ) -> String {
         format!("[{:?}][{}]\t{}\n", time, metadata.level, log_record)
@@ -231,6 +233,63 @@ macro_rules! decode_and_assert {
         assert_eq!($expected, out);
         rest
     }};
+}
+
+pub(crate) mod json {
+    #[macro_export]
+    macro_rules! assert_json_fields {
+        ($f:expr, $expected:expr) => {
+            $f;
+            flush_all!();
+            let output = unsafe { VEC.get(0).and_then(|s| s.strip_suffix('\n')).unwrap() };
+            let fields = extract_fields(output).unwrap();
+            assert_eq!(fields, $expected);
+            unsafe { VEC.clear() };
+        };
+    }
+
+    #[macro_export]
+    macro_rules! assert_json_no_message {
+        ($f:expr) => {
+            $f;
+            flush_all!();
+            let output = unsafe { VEC.get(0).and_then(|s| s.strip_suffix('\n')).unwrap() };
+            let fields = extract_fields(output).unwrap();
+            assert!(fields.find("message").is_none());
+            unsafe { VEC.clear() };
+        };
+    }
+
+    pub(crate) fn extract_fields(s: &str) -> Option<&str> {
+        let key = "\"fields\":";
+        let idx = s.find(key)?;
+        // Exclude surrounding braces
+        Some(&s[(idx + key.len())..(s.len() - 1)])
+    }
+
+    pub(crate) fn construct_json_fields(args: &[(&str, &str)]) -> String {
+        let mut s = String::new();
+        if args.is_empty() {
+            return s;
+        }
+
+        s.push('{');
+
+        let num_args = args.len();
+        for (idx, arg) in args.iter().enumerate() {
+            s.push('"');
+            s.push_str(arg.0);
+            s.push_str("\":\"");
+            s.push_str(arg.1);
+            s.push('"');
+
+            if idx < num_args - 1 {
+                s.push(',');
+            }
+        }
+        s.push('}');
+        s
+    }
 }
 
 #[doc(hidden)]

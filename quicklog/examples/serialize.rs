@@ -1,8 +1,9 @@
 use std::mem::size_of;
 
+use quicklog::formatter::PatternFormatter;
 use quicklog::queue::Metadata;
 use quicklog::serialize::Serialize;
-use quicklog::{flush, info, init, with_formatter, PatternFormatter, Serialize};
+use quicklog::{flush, info, init, with_formatter, Serialize};
 
 /// Struct deriving `Serialize` by using the derive-macro.
 ///
@@ -143,6 +144,7 @@ impl PatternFormatter for PlainFormatter {
         &mut self,
         _: chrono::DateTime<chrono::Utc>,
         _: &Metadata,
+        _: &[String],
         log_record: &str,
     ) -> String {
         format!("{}\n", log_record)

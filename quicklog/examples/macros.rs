@@ -1,6 +1,6 @@
 use quicklog::{
-    debug, error, flush, info, init, queue::Metadata, serialize::Serialize, trace, warn,
-    with_formatter, PatternFormatter,
+    debug, error, flush, formatter::PatternFormatter, info, init, queue::Metadata,
+    serialize::Serialize, trace, warn, with_formatter,
 };
 
 #[derive(Clone, Debug)]
@@ -36,6 +36,7 @@ impl PatternFormatter for CustomFormatter {
         &mut self,
         time: chrono::DateTime<chrono::Utc>,
         metadata: &Metadata,
+        _: &[String],
         log_record: &str,
     ) -> String {
         format!(

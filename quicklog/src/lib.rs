@@ -198,28 +198,29 @@
 //! [`StdoutFlusher`]: crate::StdoutFlusher
 //! [`FileFlusher`]: crate::FileFlusher
 
+/// Formatters for structuring log output.
+pub mod formatter;
 /// Contains logging levels and filters.
 pub mod level;
 /// Macros for logging and modifying the currently used [`Flush`] handlers,
 /// along with some utilities.
 pub mod macros;
+/// Operations and types involved with writing/reading to the global buffer.
+pub mod queue;
 /// [`Serialize`] trait for serialization of various data types to aid in
 /// fast logging.
 pub mod serialize;
-
-/// Operations and types involved with writing/reading to the global buffer.
-pub mod queue;
-
 /// Utility functions.
 pub mod utils;
 
 use bumpalo::Bump;
 use dyn_fmt::AsStrFormatExt;
+use formatter::{PatternFormatter, QuickLogFormatter};
 use minstant::Instant;
 use queue::{
     ArgsKind, Consumer, Cursor, FinishState, FlushError, FlushResult, LogArgType, LogHeader,
-    Metadata, Prepare, Producer, Queue, QueueError, ReadError, SerializePrepare, WriteFinish,
-    WritePrepare, WriteState,
+    Prepare, Producer, Queue, QueueError, ReadError, SerializePrepare, WriteFinish, WritePrepare,
+    WriteState,
 };
 use serialize::DecodeFn;
 use std::cell::OnceCell;
@@ -235,6 +236,8 @@ pub use quicklog_macros::{
     debug, debug_defer, error, error_defer, info, info_defer, trace, trace_defer, warn, warn_defer,
     Serialize,
 };
+
+use crate::formatter::construct_full_fmt_str;
 
 /// Logger initialized to [`Quicklog`].
 #[doc(hidden)]
@@ -253,70 +256,6 @@ pub fn logger() -> &'static mut Quicklog {
         LOGGER
             .get_mut()
             .expect("LOGGER not initialized, call `quicklog::init!()` first!")
-    }
-}
-
-/// Specifies how to format the final log record.
-pub trait PatternFormatter {
-    /// Customize format output as desired.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use chrono::{DateTime, Utc};
-    /// use quicklog::{init, queue::Metadata, with_formatter, PatternFormatter};
-    ///
-    /// struct MyFormatter {
-    ///     callsite: &'static str,
-    /// }
-    ///
-    /// impl PatternFormatter for MyFormatter {
-    ///     fn custom_format(
-    ///         &mut self,
-    ///         time: DateTime<Utc>,
-    ///         metadata: &Metadata,
-    ///         log_record: &str,
-    ///     ) -> String {
-    ///         format!(
-    ///             "[CALLSITE: {}][{:?}][{}]{}\n",
-    ///             self.callsite, time, metadata.level, log_record
-    ///         )
-    ///     }
-    /// }
-    ///
-    /// # fn main() {
-    /// init!();
-    /// let my_formatter = MyFormatter {
-    ///     callsite: "main callsite",
-    /// };
-    /// with_formatter!(my_formatter);
-    /// // logging calls...
-    /// # }
-    /// ```
-    fn custom_format(
-        &mut self,
-        time: DateTime<Utc>,
-        metadata: &Metadata,
-        log_record: &str,
-    ) -> String;
-}
-
-/// A basic formatter implementing [`PatternFormatter`].
-pub struct QuickLogFormatter;
-
-impl PatternFormatter for QuickLogFormatter {
-    fn custom_format(
-        &mut self,
-        time: DateTime<Utc>,
-        metadata: &Metadata,
-        log_record: &str,
-    ) -> String {
-        format!(
-            "[{}][{}]{}\n",
-            time.format("%FT%H:%M:%S%.9f%z"),
-            metadata.level,
-            log_record
-        )
     }
 }
 
@@ -420,15 +359,12 @@ impl Quicklog {
         let log_header = cursor.read::<LogHeader>()?;
 
         let time = self.clock.compute_datetime(log_header.instant);
-        let formatted = match log_header.args_kind {
+        let mut decoded_args = Vec::new();
+        match log_header.args_kind {
             ArgsKind::AllSerialize(decode_fn) => {
-                let mut decoded_args = Vec::new();
                 cursor.read_decode_each(decode_fn, &mut decoded_args)?;
-
-                log_header.metadata.format_str.format(&decoded_args)
             }
             ArgsKind::Normal(num_args) => {
-                let mut decoded_args = Vec::with_capacity(num_args);
                 for _ in 0..num_args {
                     let arg_type = cursor.read::<LogArgType>()?;
 
@@ -455,14 +391,29 @@ impl Quicklog {
                     };
                     decoded_args.push(decoded);
                 }
-
-                log_header.metadata.format_str.format(&decoded_args)
             }
+        }
+
+        let num_field_args = log_header.metadata.fields.len();
+        debug_assert!(decoded_args.len() >= num_field_args);
+        let end_idx = num_field_args.min(decoded_args.len());
+        let field_start_idx = decoded_args.len() - end_idx;
+        let field_args = &decoded_args[field_start_idx..];
+
+        let formatted = if self.formatter.include_structured_fields() {
+            let fmt_str =
+                construct_full_fmt_str(log_header.metadata.format_str, log_header.metadata.fields);
+            fmt_str.format(&decoded_args)
+        } else {
+            log_header
+                .metadata
+                .format_str
+                .format(&decoded_args[..field_start_idx])
         };
 
-        let log_line = self
-            .formatter
-            .custom_format(time, log_header.metadata, &formatted);
+        let log_line =
+            self.formatter
+                .custom_format(time, log_header.metadata, field_args, &formatted);
         self.flusher.flush_one(log_line);
 
         let read = cursor.finish();

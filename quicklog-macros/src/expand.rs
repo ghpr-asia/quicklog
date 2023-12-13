@@ -79,7 +79,7 @@ impl Codegen {
         let mut args_in_order: Vec<LogArg> = Vec::new();
 
         let fragments = extract_fmt_args(original_fmt_str.as_str(), &args.formatting_args)?;
-        let mut fmt_str = match fragments {
+        let fmt_str = match fragments {
             FmtFragments::Serialize((new_fmt_str, serialize_fmt_args)) => {
                 args_in_order.extend(
                     std::iter::repeat(ArgType::Serialize)
@@ -131,21 +131,6 @@ impl Codegen {
         let (get_total_sizes, (args_kind, write)) =
             Self::gen_sizes_and_write(&args_in_order, all_serialize);
 
-        // Construct format string for prefixed fields and append to original
-        // format string
-        if !fmt_str.is_empty() && !args.prefixed_fields.is_empty() {
-            fmt_str.push(' ');
-        }
-        let num_prefixed_fields = args.prefixed_fields.len();
-        for (idx, field) in args.prefixed_fields.iter().enumerate() {
-            let fmt_name = field.name().to_string() + "={}";
-            fmt_str.push_str(fmt_name.as_str());
-
-            if idx < num_prefixed_fields - 1 {
-                fmt_str.push(' ');
-            }
-        }
-
         // Logging initializing steps: acquire logger and prepare all buffers
         // for writing to the queue
         let state = if all_serialize {
@@ -170,13 +155,20 @@ impl Codegen {
         };
 
         // Metadata construction
+        let structured_names: Vec<String> = args
+            .prefixed_fields
+            .iter()
+            .map(|f| f.name().to_string())
+            .collect();
         let metadata_write = quote! {
+            const NAMES: &'static [&'static str] = &[#(#structured_names),*];
             static META: quicklog::queue::Metadata = quicklog::queue::Metadata::new(
                 std::module_path!(),
                 std::file!(),
                 std::line!(),
                 #level,
                 #fmt_str,
+                NAMES,
             );
         };
 

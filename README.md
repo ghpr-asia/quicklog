@@ -137,9 +137,10 @@ quicklog::info!(a = some_struct, "Some data:")
 It is possible to mix-and-match the output location and log format using the `with_flush` and `with_formatter` macros, which take in an implementor of the `Flush` and the `PatternFormatter` traits respectively.
 
 ```rust no_run
+use quicklog::formatter::PatternFormatter;
 use quicklog::queue::Metadata;
 use quicklog::{DateTime, Utc};
-use quicklog::{flush, init, info, with_flush_into_file, with_formatter, PatternFormatter};
+use quicklog::{flush, init, info, with_flush_into_file, with_formatter};
 
 pub struct PlainFormatter;
 
@@ -148,6 +149,7 @@ impl PatternFormatter for PlainFormatter {
         &mut self,
         _: DateTime<chrono::Utc>,
         _: &Metadata,
+        _: &[String],
         log_record: &str,
     ) -> String {
         format!("{}\n", log_record)
