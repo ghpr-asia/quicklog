@@ -322,7 +322,8 @@ fn extract_fmt_args(fmt_str: &str, fmt_args: &ExprFields) -> Result<FmtFragments
 
         // Found a valid format specifier, now just check if is serialize or not
         if let Some(colon_idx) = s[..end_idx].find(":^") {
-            specifier_ranges.push((idx, idx + end_idx));
+            // +1 for 0-indexing
+            specifier_ranges.push((idx, idx + end_idx + 1));
             // Check for named capture (note: parsing within '{}' here)
             if colon_idx == 0 {
                 // {:^} -> unnamed capture
@@ -382,10 +383,11 @@ fn extract_fmt_args(fmt_str: &str, fmt_args: &ExprFields) -> Result<FmtFragments
     for (start, end) in specifier_ranges {
         new_fmt_str.push_str(&fmt_str[previous_end..start]);
         new_fmt_str.push_str("{}");
+        // Advance past old '}'
         previous_end = end + 1;
     }
-    if previous_end + 1 < fmt_str.len() {
-        new_fmt_str.push_str(&fmt_str[(previous_end + 1)..]);
+    if previous_end < fmt_str.len() {
+        new_fmt_str.push_str(&fmt_str[previous_end..]);
     }
 
     Ok(FmtFragments::Serialize((new_fmt_str, serialize_args)))
