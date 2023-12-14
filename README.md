@@ -235,12 +235,14 @@ More usage examples are available [here](quicklog/examples). Some notable ones a
 
 ## Benchmarks
 
+Benchmarks were run on an M1 Pro (2021), 16GB RAM setup.
+
 ### Logging Integers
 
 `quicklog::info!(a = 1u32, b = 2u32, c = 3u32, "Some data:")`
 
 ```bash
-Serialize/3x4B           time:   [20.089 ns 20.106 ns 20.123 ns]
+Serialize/3x4B           time:   [9.5996 ns 9.6222 ns 9.6417 ns]
 ```
 
 ### Logging Integers + String
@@ -248,27 +250,27 @@ Serialize/3x4B           time:   [20.089 ns 20.106 ns 20.123 ns]
 `quicklog::info!(a = 1u32, b = 2u32, c = "The quick brown fox jumps over the lazy dog", "Some data:")`
 
 ```bash
-Serialize/2x4B + string  time:   [25.520 ns 25.563 ns 25.615 ns]
+Serialize/2x4B + string  time:   [10.688 ns 10.701 ns 10.715 ns]
 ```
 
 ### Logging 64B-4KB structs
 
 ```bash
-Serialize/64B           time:   [12.444 ns 12.464 ns 12.484 ns]
+Serialize/64B           time:   [10.706 ns 10.717 ns 10.730 ns]
 
-Serialize/128B          time:   [12.309 ns 12.332 ns 12.360 ns]
+Serialize/128B          time:   [10.889 ns 10.919 ns 10.961 ns]
 
-Serialize/256B          time:   [13.654 ns 13.712 ns 13.777 ns]
+Serialize/256B          time:   [13.113 ns 13.171 ns 13.239 ns]
 
-Serialize/512B          time:   [24.607 ns 24.698 ns 24.779 ns]
+Serialize/512B          time:   [19.125 ns 19.509 ns 19.931 ns]
 
-Serialize/1024B         time:   [41.746 ns 42.450 ns 43.000 ns]
+Serialize/1024B         time:   [29.335 ns 29.377 ns 29.414 ns]
 
-Serialize/4KB:          time:   [114.15 ns 114.73 ns 115.45 ns]
+Serialize/4KB:          time:   [96.089 ns 96.186 ns 96.316 ns]
 
-tracing/4KB:            time:   [20.985 µs 21.050 µs 21.117 µs]
+tracing/4KB:            time:   [19.677 µs 19.727 µs 19.776 µs]
 
-delog/4KB:              time:   [21.942 µs 21.964 µs 21.991 µs]
+delog/4KB:              time:   [19.658 µs 19.693 µs 19.734 µs]
 ```
 
 Full benchmarks can be found in the [benchmarks folder](quicklog/benches).
