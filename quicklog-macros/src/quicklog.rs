@@ -19,6 +19,7 @@ pub(crate) enum Level {
     Info = 2,
     Warn = 3,
     Error = 4,
+    Event = 5,
 }
 
 impl FromStr for Level {
@@ -31,6 +32,7 @@ impl FromStr for Level {
             "inf" | "info" | "2" => Ok(Level::Info),
             "wrn" | "warn" | "3" => Ok(Level::Warn),
             "err" | "error" | "4" => Ok(Level::Error),
+            "evt" | "event" | "5" => Ok(Level::Event),
             _ => Err(ParseError::VariantNotFound),
         }
     }
@@ -44,6 +46,7 @@ impl ToTokens for Level {
             Self::Info => quote! { quicklog::level::Level::Info },
             Self::Warn => quote! { quicklog::level::Level::Warn },
             Self::Error => quote! { quicklog::level::Level::Error },
+            Self::Event => quote! { quicklog::level::Level::Event },
         };
 
         tokens.extend(tok);

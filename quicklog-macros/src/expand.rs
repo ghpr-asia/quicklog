@@ -160,6 +160,7 @@ impl Codegen {
             .iter()
             .map(|f| f.name().to_string())
             .collect();
+        let json = matches!(level, Level::Event);
         let metadata_write = quote! {
             const NAMES: &'static [&'static str] = &[#(#structured_names),*];
             static META: quicklog::queue::Metadata = quicklog::queue::Metadata::new(
@@ -169,6 +170,7 @@ impl Codegen {
                 #level,
                 #fmt_str,
                 NAMES,
+                #json,
             );
         };
 
@@ -426,7 +428,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
                 Level::Info => quote! {
                     quicklog::utils::likely(quicklog::is_level_enabled!(#level))
                 },
-                Level::Trace | Level::Debug | Level::Warn | Level::Error => quote! {
+                Level::Trace | Level::Debug | Level::Warn | Level::Error | Level::Event => quote! {
                     quicklog::utils::unlikely(quicklog::is_level_enabled!(#level))
                 },
             });
@@ -459,7 +461,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
                 (#log_body)()
             }
         }
-        Level::Info | Level::Trace | Level::Debug | Level::Warn | Level::Error => {
+        Level::Info | Level::Trace | Level::Debug | Level::Warn | Level::Error | Level::Event => {
             quote! {
                 quicklog::log_wrapper(#log_body)
             }

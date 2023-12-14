@@ -70,6 +70,18 @@ pub fn error_defer(input: TokenStream) -> TokenStream {
     expand(Level::Error, input, true)
 }
 
+/// Special macro for JSON formatting.
+#[proc_macro]
+pub fn event(input: TokenStream) -> TokenStream {
+    expand(Level::Event, input, false)
+}
+
+/// Special macro for JSON formatting, with deferred committing.
+#[proc_macro]
+pub fn event_defer(input: TokenStream) -> TokenStream {
+    expand(Level::Event, input, true)
+}
+
 /// Derive macro for generating `Serialize` implementations.
 #[proc_macro_derive(Serialize)]
 pub fn derive_serialize(input: TokenStream) -> TokenStream {

@@ -27,12 +27,6 @@ impl Flush for VecFlusher {
 
 pub(crate) struct TestFormatter;
 
-impl TestFormatter {
-    pub(crate) fn new() -> Self {
-        Self {}
-    }
-}
-
 impl PatternFormatter for TestFormatter {
     fn custom_format(
         &mut self,
@@ -203,7 +197,7 @@ macro_rules! setup {
         static mut VEC: Vec<String> = Vec::new();
         let vec_flusher = unsafe { common::VecFlusher::new(&mut VEC) };
         quicklog::logger().use_flush(Box::new(vec_flusher));
-        quicklog::logger().use_formatter(Box::new(common::TestFormatter::new()))
+        quicklog::logger().use_formatter(Box::new(common::TestFormatter))
     };
 }
 

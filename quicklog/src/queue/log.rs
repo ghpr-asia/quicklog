@@ -45,6 +45,7 @@ pub struct Metadata {
     pub level: Level,
     pub format_str: &'static str,
     pub fields: &'static [&'static str],
+    pub json: bool,
 }
 
 impl Metadata {
@@ -56,6 +57,7 @@ impl Metadata {
         level: Level,
         format_str: &'static str,
         fields: &'static [&'static str],
+        json: bool,
     ) -> Self {
         Self {
             module_path,
@@ -64,6 +66,7 @@ impl Metadata {
             level,
             format_str,
             fields,
+            json,
         }
     }
 }

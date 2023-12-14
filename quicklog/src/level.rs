@@ -40,6 +40,8 @@ pub enum Level {
     Warn = 3,
     /// Designates serious errors
     Error = 4,
+    /// Designates key-value (e.g JSON) records
+    Event = 5,
 }
 
 impl std::fmt::Display for Level {
@@ -50,6 +52,7 @@ impl std::fmt::Display for Level {
             Self::Info => "INF",
             Self::Warn => "WRN",
             Self::Error => "ERR",
+            Self::Event => "EVT",
         };
         write!(f, "{}", level)
     }

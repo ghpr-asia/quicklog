@@ -233,11 +233,11 @@ pub use quicklog_flush::{
     file_flusher::FileFlusher, noop_flusher::NoopFlusher, stdout_flusher::StdoutFlusher, Flush,
 };
 pub use quicklog_macros::{
-    debug, debug_defer, error, error_defer, info, info_defer, trace, trace_defer, warn, warn_defer,
-    Serialize,
+    debug, debug_defer, error, error_defer, event, event_defer, info, info_defer, trace,
+    trace_defer, warn, warn_defer, Serialize,
 };
 
-use crate::formatter::construct_full_fmt_str;
+use crate::formatter::{construct_full_fmt_str, JsonFormatter};
 
 /// Logger initialized to [`Quicklog`].
 #[doc(hidden)]
@@ -400,20 +400,31 @@ impl Quicklog {
         let field_start_idx = decoded_args.len() - end_idx;
         let field_args = &decoded_args[field_start_idx..];
 
-        let formatted = if self.formatter.include_structured_fields() {
-            let fmt_str =
-                construct_full_fmt_str(log_header.metadata.format_str, log_header.metadata.fields);
-            fmt_str.format(&decoded_args)
-        } else {
-            log_header
+        let log_line = if log_header.metadata.json {
+            // Override global formatter
+            let formatted = log_header
                 .metadata
                 .format_str
-                .format(&decoded_args[..field_start_idx])
-        };
+                .format(&decoded_args[..field_start_idx]);
 
-        let log_line =
+            JsonFormatter.custom_format(time, log_header.metadata, field_args, &formatted)
+        } else {
+            let formatted = if self.formatter.include_structured_fields() {
+                let fmt_str = construct_full_fmt_str(
+                    log_header.metadata.format_str,
+                    log_header.metadata.fields,
+                );
+                fmt_str.format(&decoded_args)
+            } else {
+                log_header
+                    .metadata
+                    .format_str
+                    .format(&decoded_args[..field_start_idx])
+            };
+
             self.formatter
-                .custom_format(time, log_header.metadata, field_args, &formatted);
+                .custom_format(time, log_header.metadata, field_args, &formatted)
+        };
         self.flusher.flush_one(log_line);
 
         let read = cursor.finish();

@@ -1,5 +1,5 @@
 use quicklog::{
-    debug, error, flush, formatter::PatternFormatter, info, init, queue::Metadata,
+    debug, error, event, flush, formatter::PatternFormatter, info, init, queue::Metadata,
     serialize::Serialize, trace, warn, with_formatter,
 };
 
@@ -101,6 +101,9 @@ fn main() {
     // Named parameters
     info!(debug_impl = ?s_0, "My struct {a}", a = s_0);
     info!(debug_impl = ?s_0, "My struct {s_0:?}");
+
+    // JSON formatting
+    event!(key1 = ?s_0, key2 = %s_0, "Some message: {a}", a = s_1);
 
     while let Ok(()) = flush!() {}
 }
