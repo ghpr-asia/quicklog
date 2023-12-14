@@ -403,7 +403,9 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
     };
 
     if min_log_level > Some(level) {
-        return TokenStream2::new();
+        // Need to return empty block expression here instead of no tokens
+        // since macros can be used as part of expressions
+        return quote! {{}};
     }
 
     let Codegen {
@@ -465,12 +467,9 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
         }
     };
     if min_log_level.is_some() {
-        return quote! {
-            {
-                #log_wrapper
-            }
-            .unwrap_or(())
-        };
+        return quote! {{
+            #log_wrapper.unwrap_or(())
+        }};
     }
 
     let check = match level {
