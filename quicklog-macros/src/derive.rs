@@ -31,16 +31,13 @@ use syn::{
 ///     #[inline]
 ///     fn encode<'buf>(
 ///         &self,
-///         write_buf: &'buf mut [u8],
+///         mut write_buf: &'buf mut [u8],
 ///     ) -> &'buf mut [u8] {
-///         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-///         let (_, mut tail) = chunk.split_at_mut(0);
 ///         let TestStruct { a, b, c } = self;
-///         let tail = a.encode(tail);
-///         let tail = b.encode(tail);
-///         let tail = c.encode(tail);
-///         assert!(tail.is_empty());
-///         rest
+///         write_buf = a.encode(tail);
+///         write_buf = b.encode(tail);
+///         write_buf = c.encode(tail);
+///         write_buf
 ///     }
 ///     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
 ///         let (a, read_buf) = <usize as quicklog::serialize::Serialize>::decode(read_buf);
@@ -79,27 +76,24 @@ use syn::{
 ///     #[inline]
 ///     fn encode<'buf>(
 ///         &self,
-///         write_buf: &'buf mut [u8],
+///         mut write_buf: &'buf mut [u8],
 ///     ) -> &'buf mut [u8] {
-///         let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-///         let (_, mut tail) = chunk.split_at_mut(0);
 ///         match self {
 ///             Self::Foo(x) => {
-///                 tail = (0 as usize).encode(tail);
-///                 tail = x.encode(tail);
+///                 write_buf = (0 as usize).encode(write_buf);
+///                 write_buf = x.encode(write_buf);
 ///             }
 ///             Self::Bar { a, b } => {
-///                 tail = (1 as usize).encode(tail);
-///                 tail = a.encode(tail);
-///                 tail = b.encode(tail);
+///                 write_buf = (1 as usize).encode(write_buf);
+///                 write_buf = a.encode(write_buf);
+///                 write_buf = b.encode(write_buf);
 ///             }
 ///             Self::Baz(x) => {
-///                 tail = (2 as usize).encode(tail);
-///                 tail = x.encode(tail);
+///                 write_buf = (2 as usize).encode(write_buf);
+///                 write_buf = x.encode(write_buf);
 ///             }
 ///         }
-///         assert!(tail.is_empty());
-///         rest
+///         write_buf
 ///     }
 ///     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
 ///         let (variant_type, read_buf) = <usize as quicklog::serialize::Serialize>::decode(
@@ -156,15 +150,6 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let ty_name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-
-    let initial_split = quote! {
-        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-        let (_, mut tail) = chunk.split_at_mut(0);
-    };
-    let finish_store = quote! {
-        assert!(tail.is_empty());
-        rest
-    };
 
     let (encode, decode, buffer_size_required) = match &input.data {
         Data::Struct(DataStruct { fields, .. }) => {
@@ -229,7 +214,7 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
                 // Wrap encode logic within a match arm
                 let encode_variant = quote! {
                     Self::#variant_name #variant_delimiter_match_all => {
-                        tail = (#i as usize).encode(tail);
+                        write_buf = (#i as usize).encode(write_buf);
                         #encode
                     }
                 };
@@ -281,12 +266,10 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
     quote! {
         impl #impl_generics quicklog::serialize::Serialize for #ty_name #ty_generics #where_clause {
             #[inline]
-            fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-                #initial_split
-
+            fn encode<'buf>(&self, mut write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
                 #encode
 
-                #finish_store
+                write_buf
             }
 
             fn decode(read_buf: &[u8]) -> (String, &[u8]) {
@@ -329,7 +312,7 @@ fn gen_serialize_methods(
     let encode: TokenStream2 = field_names
         .iter()
         .map(|name| {
-            quote! { tail = #name.encode(tail); }
+            quote! { write_buf = #name.encode(write_buf); }
         })
         .collect();
 

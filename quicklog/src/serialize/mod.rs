@@ -95,11 +95,16 @@ macro_rules! gen_serialize {
         impl Serialize for $primitive {
             #[inline]
             fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-                let size = size_of::<$primitive>();
-                let (x, rest) = write_buf.split_at_mut(size);
-                x.copy_from_slice(&self.to_le_bytes());
+                let buf_ptr = write_buf.as_mut_ptr();
+                let n = size_of::<$primitive>();
+                let remaining = write_buf.len() - n;
 
-                rest
+                // SAFETY: We requested the exact amount required from the queue, so
+                // should not run out of space here.
+                unsafe {
+                    buf_ptr.copy_from_nonoverlapping(self.to_le_bytes().as_ptr(), n);
+                    std::slice::from_raw_parts_mut(buf_ptr.add(n).cast(), remaining)
+                }
             }
 
             fn decode(read_buf: &[u8]) -> (String, &[u8]) {
@@ -132,10 +137,16 @@ gen_serialize!(f64);
 impl Serialize for bool {
     #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-        chunk.copy_from_slice(&(*self as u8).to_le_bytes());
+        let buf_ptr = write_buf.as_mut_ptr();
+        let n = size_of::<Self>();
+        let remaining = write_buf.len() - n;
 
-        rest
+        // SAFETY: We requested the exact amount required from the queue, so
+        // should not run out of space here.
+        unsafe {
+            buf_ptr.copy_from_nonoverlapping((*self as u8).to_le_bytes().as_ptr(), n);
+            std::slice::from_raw_parts_mut(buf_ptr.add(n), remaining)
+        }
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
@@ -149,10 +160,16 @@ impl Serialize for bool {
 impl Serialize for char {
     #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-        chunk.copy_from_slice(&(*self as u32).to_le_bytes());
+        let buf_ptr = write_buf.as_mut_ptr();
+        let n = size_of::<Self>();
+        let remaining = write_buf.len() - n;
 
-        rest
+        // SAFETY: We requested the exact amount required from the queue, so
+        // should not run out of space here.
+        unsafe {
+            buf_ptr.copy_from_nonoverlapping((*self as u32).to_le_bytes().as_ptr(), n);
+            std::slice::from_raw_parts_mut(buf_ptr.add(n), remaining)
+        }
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
@@ -168,13 +185,18 @@ impl Serialize for &str {
     #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         let str_len = self.len();
-        let (chunk, rest) = write_buf.split_at_mut(str_len + SIZE_LENGTH);
-        let (len_chunk, str_chunk) = chunk.split_at_mut(SIZE_LENGTH);
+        let buf_ptr = write_buf.as_mut_ptr();
+        let remaining = write_buf.len() - SIZE_LENGTH - str_len;
 
-        len_chunk.copy_from_slice(&str_len.to_le_bytes());
-        str_chunk.copy_from_slice(self.as_bytes());
+        // SAFETY: We requested the exact amount required from the queue, so
+        // should not run out of space here.
+        unsafe {
+            buf_ptr.copy_from_nonoverlapping(str_len.to_le_bytes().as_ptr(), SIZE_LENGTH);
+            let s_ptr = buf_ptr.add(SIZE_LENGTH);
+            s_ptr.copy_from_nonoverlapping(self.as_bytes().as_ptr(), str_len);
 
-        rest
+            std::slice::from_raw_parts_mut(s_ptr.add(str_len), remaining)
+        }
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
@@ -282,12 +304,19 @@ impl<const N: usize, T: Serialize> Serialize for [T; N] {
 impl<T: Serialize> Serialize for Vec<T> {
     #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-        let (len_chunk, mut vec_chunk) = chunk.split_at_mut(SIZE_LENGTH);
-        len_chunk.copy_from_slice(&self.len().to_le_bytes());
+        let n_elems = self.len();
+        let buf_ptr = write_buf.as_mut_ptr();
+        let buf_len = write_buf.len();
+
+        // SAFETY: We requested the exact amount required from the queue, so
+        // should not run out of space here.
+        let mut rest = unsafe {
+            buf_ptr.copy_from_nonoverlapping(n_elems.to_le_bytes().as_ptr(), SIZE_LENGTH);
+            std::slice::from_raw_parts_mut(buf_ptr.add(SIZE_LENGTH), buf_len - SIZE_LENGTH)
+        };
 
         for i in self {
-            vec_chunk = i.encode(vec_chunk);
+            rest = i.encode(rest);
         }
 
         rest
@@ -334,21 +363,26 @@ impl<T: Serialize> Serialize for Box<T> {
 impl<T: Serialize> Serialize for Option<T> {
     #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-        let chunk_ptr = chunk.as_mut_ptr();
+        let buf_ptr = write_buf.as_mut_ptr();
+        let n = size_of::<u8>();
+
         if let Some(v) = self.as_ref() {
+            // SAFETY: We requested the exact amount required from the queue, so
+            // should not run out of space here.
             let value_chunk = unsafe {
-                chunk_ptr.write(1u8);
-                std::slice::from_raw_parts_mut(chunk_ptr.add(1), chunk.len() - size_of::<u8>())
+                buf_ptr.write(1u8);
+                std::slice::from_raw_parts_mut(buf_ptr.add(n), write_buf.len() - n)
             };
-            _ = v.encode(value_chunk);
-        } else {
-            unsafe {
-                chunk_ptr.write(2u8);
-            }
+
+            return v.encode(value_chunk);
         }
 
-        rest
+        // SAFETY: We requested the exact amount required from the queue, so
+        // should not run out of space here.
+        unsafe {
+            buf_ptr.write(2u8);
+            std::slice::from_raw_parts_mut(buf_ptr.add(n), write_buf.len() - n)
+        }
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
@@ -382,26 +416,31 @@ impl<T: Serialize> Serialize for Option<T> {
 impl<T: Serialize, E: Serialize> Serialize for Result<T, E> {
     #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-        let chunk_ptr = chunk.as_mut_ptr();
+        let buf_ptr = write_buf.as_mut_ptr();
+        let n = size_of::<u8>();
+
         match self {
             Ok(v) => {
+                // SAFETY: We requested the exact amount required from the queue, so
+                // should not run out of space here.
                 let value_chunk = unsafe {
-                    chunk_ptr.write(1u8);
-                    std::slice::from_raw_parts_mut(chunk_ptr.add(1), chunk.len() - size_of::<u8>())
+                    buf_ptr.write(1u8);
+                    std::slice::from_raw_parts_mut(buf_ptr.add(n), write_buf.len() - n)
                 };
-                _ = v.encode(value_chunk);
+
+                v.encode(value_chunk)
             }
             Err(v) => {
+                // SAFETY: We requested the exact amount required from the queue, so
+                // should not run out of space here.
                 let value_chunk = unsafe {
-                    chunk_ptr.write(2u8);
-                    std::slice::from_raw_parts_mut(chunk_ptr.add(1), chunk.len() - size_of::<u8>())
+                    buf_ptr.write(2u8);
+                    std::slice::from_raw_parts_mut(buf_ptr.add(n), write_buf.len() - n)
                 };
-                _ = v.encode(value_chunk);
+
+                v.encode(value_chunk)
             }
         }
-
-        rest
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
@@ -468,13 +507,11 @@ macro_rules! tuple_serialize {
             #[allow(non_snake_case)]
             #[allow(unused)]
             #[inline]
-            fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
+            fn encode<'buf>(&self, mut write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
                 let ($(ref $name,)*) = *self;
-                let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-                let (_, mut tail) = chunk.split_at_mut(0);
-                $( tail = $name.encode(tail); )*
+                $( write_buf = $name.encode(write_buf); )*
 
-                rest
+                write_buf
             }
 
             #[allow(non_snake_case)]
@@ -542,13 +579,17 @@ tuple_serialize_each!(A B C D E F G H I J K L);
 pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &mut [u8]) -> &mut [u8] {
     let val_string = format!("{:?}", val);
     let str_len = val_string.len();
+    let remaining = write_buf.len() - SIZE_LENGTH - str_len;
+    let buf_ptr = write_buf.as_mut_ptr();
 
-    let (chunk, rest) = write_buf.split_at_mut(str_len + SIZE_LENGTH);
-    let (len_chunk, str_chunk) = chunk.split_at_mut(SIZE_LENGTH);
-    len_chunk.copy_from_slice(&str_len.to_le_bytes());
-    str_chunk.copy_from_slice(val_string.as_bytes());
-
-    rest
+    // SAFETY: We requested the exact amount required from the queue, so
+    // should not run out of space here.
+    unsafe {
+        buf_ptr.copy_from_nonoverlapping(str_len.to_le_bytes().as_ptr(), SIZE_LENGTH);
+        let s_ptr = buf_ptr.add(SIZE_LENGTH);
+        s_ptr.copy_from_nonoverlapping(val_string.as_bytes().as_ptr(), str_len);
+        std::slice::from_raw_parts_mut(s_ptr.add(str_len), remaining)
+    }
 }
 
 pub fn decode_debug(read_buf: &[u8]) -> (String, &[u8]) {

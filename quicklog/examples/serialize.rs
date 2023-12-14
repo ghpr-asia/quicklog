@@ -52,15 +52,21 @@ impl Serialize for ManualSerializeStruct<'_> {
                 std::slice::from_raw_parts(a as *const T as *const u8, std::mem::size_of::<T>())
             }
         }
+        let buf_ptr = write_buf.as_mut_ptr();
+        let a_sz = size_of::<&str>();
+        let b_sz = size_of::<usize>();
 
-        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-        let (a_chunk, chunk_rest) = chunk.split_at_mut(size_of::<&str>());
-        let (b_chunk, chunk_rest) = chunk_rest.split_at_mut(size_of::<usize>());
-        let (c_chunk, d_chunk) = chunk_rest.split_at_mut(self.c.buffer_size_required());
+        // SAFETY: We requested the exact amount required from the queue, so
+        // should not run out of space here.
+        let mut buf = unsafe {
+            // Since str is 'static, just copy pointer
+            buf_ptr.copy_from_nonoverlapping(any_as_bytes(&self.a).as_ptr(), a_sz);
 
-        // Since str is 'static, just copy pointer
-        a_chunk.copy_from_slice(any_as_bytes(&self.a));
-        b_chunk.copy_from_slice(&self.b.to_le_bytes());
+            let b_ptr = buf_ptr.add(a_sz);
+            b_ptr.copy_from_nonoverlapping(self.b.to_le_bytes().as_ptr(), b_sz);
+
+            std::slice::from_raw_parts_mut(b_ptr.add(b_sz), write_buf.len() - a_sz - b_sz)
+        };
 
         // When decoding, we need to know how many bytes to read from the buffer
         // in order to restore the contents of `self.c`. So, we first encode the
@@ -74,17 +80,24 @@ impl Serialize for ManualSerializeStruct<'_> {
         // Fortunately, an implementation of `Serialize` for `String` types is
         // already provided out-of-the-box. So, here we can piggy back on that
         // implementation.
-        _ = self.c.encode(c_chunk);
+        buf = self.c.encode(buf);
 
-        // For dynamically-sized buffers, note that we need to encode
-        // the *length* of the buffer as well. Otherwise, during decoding, we
-        // wouldn't know how many bytes to read to restore the contents of the
-        // buffer.
-        let (d_len_chunk, d_buf_chunk) = d_chunk.split_at_mut(size_of::<usize>());
-        d_len_chunk.copy_from_slice(&self.d.len().to_le_bytes());
-        d_buf_chunk.copy_from_slice(self.d);
+        let buf_ptr = buf.as_mut_ptr();
+        let d_len = self.d.len();
 
-        rest
+        // SAFETY: We requested the exact amount required from the queue, so
+        // should not run out of space here.
+        unsafe {
+            // For dynamically-sized buffers, note that we need to encode
+            // the *length* of the buffer as well. Otherwise, during decoding, we
+            // wouldn't know how many bytes to read to restore the contents of the
+            // buffer.
+            buf_ptr
+                .copy_from_nonoverlapping(self.d.len().to_le_bytes().as_ptr(), size_of::<usize>());
+            let p = buf_ptr.add(size_of::<usize>());
+            p.copy_from_nonoverlapping(self.d.as_ptr(), d_len);
+            std::slice::from_raw_parts_mut(p.add(d_len), buf.len() - size_of::<usize>() - d_len)
+        }
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {

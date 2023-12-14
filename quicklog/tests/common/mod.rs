@@ -141,20 +141,10 @@ pub(crate) struct BigStruct {
 }
 
 impl Serialize for BigStruct {
-    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
+    fn encode<'buf>(&self, mut write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
+        write_buf = self.vec.encode(write_buf);
 
-        let elm_size = std::mem::size_of::<i32>();
-        let (vec_chunk, str_chunk) = chunk.split_at_mut(self.vec.len() * elm_size);
-        let (mut _head, mut _tail) = vec_chunk.split_at_mut(0);
-        for i in 0..self.vec.len() {
-            (_head, _tail) = _tail.split_at_mut(elm_size);
-            _head.copy_from_slice(&self.vec[i].to_le_bytes())
-        }
-
-        _ = self.some.encode(str_chunk);
-
-        rest
+        self.some.encode(write_buf)
     }
 
     fn decode(buf: &[u8]) -> (String, &[u8]) {

@@ -48,10 +48,15 @@ pub(crate) struct BigStruct {
 impl Serialize for BigStruct {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         // BigStruct is Copy, so we can just memcpy the whole struct
-        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-        chunk.copy_from_slice(any_as_bytes(self));
+        let buf_ptr = write_buf.as_mut_ptr();
+        let bytes = any_as_bytes(self);
+        let n = bytes.len();
+        let remaining = write_buf.len() - n;
 
-        rest
+        unsafe {
+            buf_ptr.copy_from_nonoverlapping(bytes.as_ptr(), n);
+            std::slice::from_raw_parts_mut(buf_ptr.add(n), remaining)
+        }
     }
 
     fn decode(buf: &[u8]) -> (String, &[u8]) {

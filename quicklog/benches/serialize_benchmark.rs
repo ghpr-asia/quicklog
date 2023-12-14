@@ -33,10 +33,14 @@ impl<const N: usize> ArrStruct<N> {
 
 impl<const N: usize> Serialize for ArrStruct<N> {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-        let (chunk, rest) = write_buf.split_at_mut(self.buffer_size_required());
-        chunk.copy_from_slice(any_as_bytes(self));
+        let buf_ptr = write_buf.as_mut_ptr();
 
-        rest
+        unsafe {
+            let b = any_as_bytes(self);
+            let n = b.len();
+            buf_ptr.copy_from_nonoverlapping(b.as_ptr(), n);
+            std::slice::from_raw_parts_mut(buf_ptr.add(n), write_buf.len() - n)
+        }
     }
 
     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
