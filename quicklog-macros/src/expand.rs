@@ -420,18 +420,6 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
         }
     };
 
-    let log_level_check =
-        min_log_level
-            .is_some()
-            .then(|| quote! {})
-            .unwrap_or_else(|| match level {
-                Level::Info => quote! {
-                    quicklog::utils::likely(quicklog::is_level_enabled!(#level))
-                },
-                Level::Trace | Level::Debug | Level::Warn | Level::Error | Level::Event => quote! {
-                    quicklog::utils::unlikely(quicklog::is_level_enabled!(#level))
-                },
-            });
     let finish = if defer_commit {
         quote! {
             let finished = state.finish();
@@ -446,6 +434,15 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
 
     let log_body = quote! {
         || {
+            use quicklog::{serialize::Serialize};
+
+            #metadata
+
+            #[inline(always)]
+            fn _decode_fn<T: quicklog::serialize::SerializeTpl>(_a: &T) -> quicklog::serialize::DecodeEachFn {
+                T::decode_each
+            }
+
             #prologue
 
             #write
@@ -456,7 +453,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
         }
     };
     let log_wrapper = match level {
-        Level::Info if fast_path => {
+        Level::Info | Level::Event if fast_path => {
             quote! {
                 (#log_body)()
             }
@@ -467,18 +464,26 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
             }
         }
     };
+    if min_log_level.is_some() {
+        return quote! {
+            {
+                #log_wrapper
+            }
+            .unwrap_or(())
+        };
+    }
+
+    let check = match level {
+        Level::Info | Level::Event => quote! {
+            quicklog::utils::likely(quicklog::is_level_enabled!(#level))
+        },
+        Level::Trace | Level::Debug | Level::Warn | Level::Error => quote! {
+            quicklog::utils::unlikely(quicklog::is_level_enabled!(#level))
+        },
+    };
 
     quote! {{
-        if #log_level_check {
-            use quicklog::{serialize::Serialize};
-
-            #metadata
-
-            #[inline(always)]
-            fn _decode_fn<T: quicklog::serialize::SerializeTpl>(_a: &T) -> quicklog::serialize::DecodeEachFn {
-                T::decode_each
-            }
-
+        if #check {
             #log_wrapper
         } else {
             Ok(())
