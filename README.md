@@ -50,10 +50,10 @@ fn main() {
 
 `quicklog` provides a `Serialize` trait which is used to opt into fast logging. Applications looking to speed up logging should look to derive a `Serialize` implementation for user-defined types, or provide a manual implementation (see the [serialize example](quicklog/examples/serialize.rs) for a more comprehensive tutorial).
 
-To allow `quicklog` to use the `Serialize` implementations of the logging arguments, there are two requirements:
+To allow `quicklog` to use the `Serialize` implementations of the logging arguments, there are two main ways:
 
-- The (optionally-named) argument must be placed _before_ the format string.
-- The argument must not have a prefix (`?` or `%`).
+- Place the argument before the format string, as part of the _structured fields_ (similar to [tracing](https://docs.rs/tracing/latest/tracing/#recording-fields)). `quicklog` will automatically try to use the `Serialize` implementation for an argument placed in this position.
+- Use the `{:^}` formatting specifier in the format string, similar to how `{:?}` and `{}` are used for arguments implementing the `Debug` and `Display` traits respectively.
 
 ```rust no_run
 use quicklog::{flush, info, init, Serialize};
@@ -81,7 +81,9 @@ fn main() {
 
     // fast -- uses `Serialize`
     info!(s, "fast logging, using Serialize");
+    // structured field
     info!(serialize_struct = s, "fast logging, using Serialize");
+    // format specifier
     info!("fast logging, using Serialize: serialize_struct={:^}", s);
 
     // `quicklog` provides default implementations of `Serialize` for
