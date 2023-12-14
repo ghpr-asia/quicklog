@@ -30,6 +30,8 @@
 pub mod file_flusher;
 /// No-op Flush, does nothing
 pub mod noop_flusher;
+/// Flushes to stderr through `eprint!` macro
+pub mod stderr_flusher;
 /// Flushes to stdout through `print!` macro
 pub mod stdout_flusher;
 
