@@ -17,6 +17,15 @@ macro_rules! with_formatter {
     }};
 }
 
+/// Sets the [`JsonFormatter`](crate::formatter::JsonFormatter) as the global
+/// default.
+#[macro_export]
+macro_rules! with_json_formatter {
+    () => {
+        $crate::logger().use_formatter(std::boxed::Box::new($crate::formatter::JsonFormatter))
+    };
+}
+
 /// Overwrites the [`Flush`](crate::Flush)
 /// implementor in [`Quicklog`](crate::Quicklog) with a
 /// [`FileFlusher`](crate::FileFlusher) using the
