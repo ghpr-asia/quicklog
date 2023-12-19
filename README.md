@@ -1,59 +1,64 @@
 # quicklog
 
-Fast single-threaded logging framework.
+## Overview
 
-Supports standard logging macros like `trace!`, `debug!`, `info!`, `warn!` and `error!`.
+`quicklog` is a fast single-threaded logging library. It supports standard logging macros such as `trace!`, `debug!`, `info!`, `warn!` and `error!`, similar to the API exposed by the [`log`](https://docs.rs/log/latest/log/) crate. One key difference is the ability to opt-in [much faster, low-latency logging](#fast-logging).
 
-Flushing is deferred until the `flush!()` macro is called.
+## Installation
 
-## Objectives
+Add this to your `Cargo.toml`:
 
-- Deferred Formatting
-- Deferred I/O for logging
-- Minimise heap allocations
-- Low call site latency for logging
+```toml
+[dependencies]
+quicklog = "0.3"
+```
+
+### Minimum Supported Rust Version
+
+`quicklog` is built against [Rust 1.72.0](https://github.com/rust-lang/rust/releases/tag/1.72.0). Support for older Rust versions is not guaranteed, and it is encouraged that users stick to this or newer versions.
 
 ## Usage
 
-### Quick start
+### Basic logging
 
-```rust no_run
-use quicklog::{info, init, flush, Serialize};
+One of the goals of `quicklog` is to provide basic logging functionality similar to `log` or `tracing`'s API. The five core logging macros are supported: `trace!`, `debug!`, `info!`, `warn!` and `error!`. [Structured logging](https://docs.rs/tracing/latest/tracing/#recording-fields) and [named parameters](https://doc.rust-lang.org/std/fmt/#named-parameters) are also supported:
+
+```rust
+use quicklog::{info, init, debug, error};
 
 fn main() {
     // initialize required resources. by default, all logs are
-    // flushed to stdout
+    // flushed to stdout.
     init!();
 
-    // similar macro syntax as `tracing`, `log`.
-    // eager formatting of format string + arguments, by default
+    // basic usage
+    info!("Simple format string without arguments");
+    info!("Format string with arguments: {:?} {}", "hello world", 123);
+
+    // structured fields -- follows similar rules to `tracing`.
+    info!(field_a = 123, field_b = "some text", "Structured fields: {:?}", 99);
+    info!(field_a = ?vec![1, 2, 3], field_b = %123, "Structured fields with sigils");
+
+    // named parameters
     let some_var = 10;
-    info!("value of some_var: {}", some_var);
-    info!(?some_var, "debug value of some var: ");
-    info!(my_var = %some_var, "display value of some named var: ");
-
-    // named parameters are supported
-    info!("explicit capture of some_var: {some_var}", some_var = some_var);
-    info!("implicit capture of some_var: {some_var}");
-
-    // fast path - arguments implementing `Serialize`.
-    // arguments before the format string without either a `?` or `%` prefix
-    // will be logged using their `Serialize` implementations, where possible
-    info!(a = 5, b = 999, c = "some string", "hello world");
+    info!("Explicit capture of some_var: {some_var}", some_var = some_var);
+    info!("Implicit capture of some_var: {some_var}");
 
     // flushes everything in queue
     while let Ok(()) = flush!() {}
 }
 ```
 
+As seen in the example, one key step is the need to call `flush!`, which will output a _single_ log entry to stdout by default. This is intentional to avoid potentially expensive I/O operations on performance-critical paths. Also note some [differences with `tracing`](#why-not-quicklog) for basic logging usage.
+
 ### Fast logging
 
-`quicklog` provides a `Serialize` trait which is used to opt into fast logging. Applications looking to speed up logging should look to derive a `Serialize` implementation for user-defined types, or provide a manual implementation (see the [serialize example](quicklog/examples/serialize.rs) for a more comprehensive tutorial).
+`quicklog` provides a `Serialize` trait which is used to opt into fast logging. Applications looking to speed up logging should look to derive a `Serialize` implementation for user-defined types, or provide a manual implementation (see the [serialize example](quicklog/examples/serialize.rs) for a more comprehensively documented tutorial).
 
-To allow `quicklog` to use the `Serialize` implementations of the logging arguments, there are two main ways:
+After implementing `Serialize` for user-defined types, there are two ways to enable `quicklog` to use them:
 
-- Place the argument before the format string, as part of the _structured fields_ (similar to [tracing](https://docs.rs/tracing/latest/tracing/#recording-fields)). `quicklog` will automatically try to use the `Serialize` implementation for an argument placed in this position.
-- Use the `{:^}` formatting specifier in the format string, similar to how `{:?}` and `{}` are used for arguments implementing the `Debug` and `Display` traits respectively.
+1. Place the argument before the format string, as part of the _structured fields_ (no prefix sigil is needed, unlike `?` and `%`). `quicklog` will automatically try to use the `Serialize` implementation for an argument placed in this position.
+2. Use the `{:^}` formatting specifier in the format string, similar to how `{:?}` and `{}` are used for arguments implementing the `Debug` and `Display` traits respectively.
 
 ```rust no_run
 use quicklog::{flush, info, init, Serialize};
@@ -72,12 +77,7 @@ fn main() {
         b: "hello".to_string(),
         c: vec!["a", "b", "c"]
     };
-
     init!();
-
-    // slow-by-default -- eager formatting
-    info!("eager logging, using Debug: {:?}", s);
-    info!(my_struct = ?s, "eager logging, using Debug:");
 
     // fast -- uses `Serialize`
     info!(s, "fast logging, using Serialize");
@@ -90,152 +90,49 @@ fn main() {
     // certain common data types
     info!(a = 1, b = 2, c = "hello world".to_string(), "fast logging, using default Serialize");
 
-    // flushes everything in queue
     while let Ok(()) = flush!() {}
 }
 ```
 
-### Deferred logging
+#### Caveats
 
-For more performance-sensitive applications, one can opt for the deferred logging macros: `trace_defer`, `debug_defer`, `info_defer`, `warn_defer` or `error_defer`. These macros accept the same logging syntax as their non-`defer` counterparts, but must be followed by an explicit call to `commit` in order for the logs to become visible via `flush`. This can be helpful when an application makes a series of logging calls consecutively in some kind of event loop, and only needs to flush/make visible those logs after the main events have been processed.
+Due to some constraints, mixing of `Serialize` and `Debug`/`Display` format specifiers in the format string is prohibited. For instance, this will fail to compile:
 
-```rust no_run
-use quicklog::{commit, flush, info_defer, init};
-
-fn main() {
-    init!();
-
-    // log without making data visible immediately
-    info_defer!("hello world");
-    info_defer!(a = 1, b = 2, "some data");
-
-    // no data committed yet!
-    assert!(flush!().is_err());
-
-    // commits all data written so far
-    commit!();
-
-    // output of logs should be visible now
-    while let Ok(()) = flush!() {}
-}
+```rust
+// mixing {:^} with {:?} or {} not allowed!
+info!("hello world {:^} {:?} {}", 1, 2, 3);
 ```
 
-### Customizing log output location and format
+However, one can mix-and-match these arguments in the _structured fields_, for example:
 
-By default, `quicklog` outputs logs to stdout in the following format: `[utc datetime]"log string"`. For instance:
-
-```rust no_run
-use quicklog::Serialize;
-#[derive(Serialize)]
-struct S {
-    i: usize,
-}
-let some_struct = S { i: 0 };
-
-// [2023-11-29T05:05:39.310212084Z]Some data: a=S { i: 0 }
-quicklog::info!(a = some_struct, "Some data:")
+```rust
+info!(debug = ?some_debug_struct, display = %some_display_struct, serialize = serialize_struct, "serialize args in fmt str: {:^} {:^}", 3, 5);
 ```
 
-It is possible to mix-and-match the output location and log format using the `with_flush` and `with_formatter` macros, which take in an implementor of the `Flush` and the `PatternFormatter` traits respectively.
+In general, for best performance, try to avoid mixing `Serialize` and non-`Serialize` arguments in each logging call. For instance, try to ensure that on performance-critical paths, every logging argument implements `Serialize`:
 
-```rust no_run
-use quicklog::formatter::PatternFormatter;
-use quicklog::queue::Metadata;
-use quicklog::{DateTime, Utc};
-use quicklog::{flush, init, info, with_flush_into_file, with_formatter};
-
-pub struct PlainFormatter;
-
-impl PatternFormatter for PlainFormatter {
-    fn custom_format(
-        &mut self,
-        _: DateTime<chrono::Utc>,
-        _: &Metadata,
-        _: &[String],
-        log_record: &str,
-    ) -> String {
-        format!("{}\n", log_record)
-    }
-}
-
-fn main() {
-    init!();
-
-    // item goes into logging queue
-    info!("hello world");
-
-    // flushed into stdout: [utc datetime]"hello world"
-    _ = flush!();
-
-    // change log output format according to `PlainFormatter`
-    with_formatter!(PlainFormatter);
-    // flush into a file path specified
-    with_flush_into_file!("logs/my_log.log");
-
-    info!("shave yaks");
-
-    // flushed into file
-    _ = flush!();
-}
+```rust
+info!(a = 1, b = "hello world", c = 930.123, "Some message: {:^}", some_serialize_struct);
 ```
-
-### Configuring max logging queue capacity
-
-By default, `quicklog` uses a queue with a capacity of 1MB to store written messages. To specify a different size, pass the desired size to the `init` macro on first initialization:
-
-```rust no_run
-use quicklog::init;
-
-fn main() {
-    // 10MB queue
-    init!(10 * 1024 * 1024);
-
-    // log some data...
-}
-```
-
-### Log filtering
-
-There are two ways to filter out the generation and execution of logs:
-
-1. At compile-time
-
-   - This is done by setting the `QUICKLOG_MIN_LEVEL` environment variable which will be read during program compilation. For example, setting `QUICKLOG_MIN_LEVEL=ERR` will _generate_ the code for only `error`-level logs, while the other logs expand to nothing in the final output. Some accepted values for the environment variable include `INF`, `info`, `Info`, `2` for the info level, with similar syntax for the other levels as well.
-
-2. At run-time
-   - This uses a simple function, [`set_max_level`](quicklog/src/level.rs#L133), to set the maximum log level at runtime. This allows for more dynamic interleaving of logs, for example:
-
-```rust ignore
-use quicklog::{error, info, init, level::{set_max_level, LevelFilter}};
-
-init!();
-
-// log everything
-set_max_level(LevelFilter::Trace);
-
-// recorded
-info!("hello world");
-// ...
-
-// only log errors from here on
-set_max_level(LevelFilter::Error);
-// this macro will be *expanded* during compilation, but not *executed*!
-info!("hello world");
-
-// recorded
-error!("some error!");
-```
-
-Note that compile-time filtering takes precedence over run-time filtering, since it influences whether `quicklog` will generate and expand the macro at build time in the first place. For instance, if we set `QUICKLOG_MIN_LEVEL=ERR`, then in the above program, the first `info("hello world")` will not be recorded at all. Also note that any filters set at runtime through `set_max_level` will have no effect if `QUICKLOG_MIN_LEVEL` is defined.
-
-Clearly, compile-time filtering is more restrictive than run-time filtering. However, performance-sensitive applications may still consider compile-time filtering since it avoids both a branch check and code generation for logs that one wants to filter out completely, which can have positive performance impact.
 
 ### More examples
 
 More usage examples are available [here](quicklog/examples). Some notable ones are:
 
-- [`macros`](quicklog/examples/macros.rs): More comprehensive example of the syntax accepted by our logging macros (similar to `tracing`, `log`).
-- [`serialize`](quicklog/examples/serialize.rs): Example on implementing `Serialize`, our core trait. Having a manual `Serialize` implementation can be useful when some information about the user-defined type can be exploited to squeeze out slightly more performance.
+- [`macros`](quicklog/examples/macros.rs): More comprehensive example of the syntax accepted by our logging macros.
+- [`serialize`](quicklog/examples/serialize.rs): Example on implementing `Serialize`, our core trait. Having a manual `Serialize` implementation can be useful at times, usually when some information about the user-defined type can be exploited to squeeze out slightly more performance.
+
+## Advanced usage
+
+Some other potentially useful features supported include:
+
+- Customizing log output location and format
+- Compile-time log filtering
+- JSON logging
+- Deferred logging
+- Configuration of max logging capacity
+
+For these advanced features, please refer to the [latest crate documentation](https://docs.rs/quicklog/latest/quicklog/) for full details.
 
 ## Benchmarks
 
@@ -281,9 +178,13 @@ Full benchmarks can be found in the [benchmarks folder](quicklog/benches).
 
 ## Why _not_ `quicklog`?
 
-`quicklog` is still in heavy development and lacks many features supported by e.g. [`tracing`](https://docs.rs/tracing/latest/tracing/), arguably the de facto crate for logging. For instance, `quicklog` currently lacks support for named targets within the logging macro, e.g.`info!(target: "my_context", ...)`. Also, if you require [spans](https://docs.rs/tracing/latest/tracing/#spans), logging in asynchronous contexts or integration with certain third-party crates, `tracing` provides these out-of-the-box with much more customizability.
+`quicklog` is still in heavy development and lacks many features supported by e.g. [`tracing`](https://docs.rs/tracing/latest/tracing/), arguably the de facto crate for logging. For instance, `quicklog` currently lacks support for:
 
-On the whole, it would be good to consider if the extra performance provided by `quicklog` is worth missing out on these features. If these features are important to you, `tracing`, `log` and other similar options would be great! Otherwise, `quicklog` aims to still provide the basic logging functionality of these crates while providing the capability, on an opt-in basis, to vastly improve logging latency.
+- Named targets within the logging macro, e.g.`info!(target: "my_context", ...)`.
+- [Spans](https://docs.rs/tracing/latest/tracing/#spans) and logging in asynchronous contexts.
+- Integration with certain third-party crates, e.g. through `tracing-subscriber`.
+
+On the whole, it would be good to consider if the extra performance provided by `quicklog` is worth missing out on these features. If these features are important to you, `tracing` and other similar options would be great! Otherwise, `quicklog` aims to still provide the basic logging functionality of these crates while providing the ability to vastly improve logging latency on an opt-in basis.
 
 ## Support
 

@@ -1,5 +1,6 @@
 use crate::Flush;
 
+/// Does nothing, i.e. simply discards log messages.
 pub struct NoopFlusher;
 
 impl NoopFlusher {

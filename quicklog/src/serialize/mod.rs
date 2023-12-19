@@ -88,7 +88,7 @@ pub type DecodeFn = fn(&[u8]) -> (String, &[u8]);
 pub type DecodeEachFn = for<'buf> fn(&'buf [u8], &mut Vec<String>) -> &'buf [u8];
 
 /// Number of bytes it takes to store the size of a type.
-pub const SIZE_LENGTH: usize = size_of::<usize>();
+pub(crate) const SIZE_LENGTH: usize = size_of::<usize>();
 
 macro_rules! gen_serialize {
     ($primitive:ty) => {

@@ -1,6 +1,6 @@
 use crate::Flush;
 
-/// Flushes into stdout
+/// Flushes into stderr
 pub struct StderrFlusher;
 
 impl StderrFlusher {
