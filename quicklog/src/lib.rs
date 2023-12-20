@@ -247,7 +247,7 @@
 //! # }
 //! ```
 //!
-//! ## Compile-time log filtering
+//! ## Log filtering
 //!
 //! There are two ways to filter out the generation and execution of logs:
 //! 1. At compile-time
@@ -280,7 +280,7 @@
 //!
 //! Note that compile-time filtering takes precedence over run-time filtering, since it influences whether `quicklog` will generate and expand the macro at build time in the first place. For instance, if we set `QUICKLOG_MIN_LEVEL=ERR`, then in the above program, the first `info("hello world")` will not be recorded at all. Also note that any filters set at runtime through `set_max_level` will have no effect if `QUICKLOG_MIN_LEVEL` is defined.
 //!
-//! Clearly, compile-time filtering is more restrictive than run-time filtering. However, performance-sensitive applications may still consider compile-time filtering since it avoids both a branch check and code generation for logs that one wants to filter out completely, which can have positive performance impact.
+//! Clearly, compile-time filtering is more restrictive than run-time filtering. However, performance-sensitive applications may still consider compile-time filtering since it avoids both a branch check and code generation for logs that one wants to filter out completely, which can have positive performance impact. But as always, remember to profile and benchmark your application to see that it actually gives the results you want.
 //!
 //! ## JSON logging
 //!
@@ -426,9 +426,13 @@ static mut LOGGER: OnceCell<Quicklog> = OnceCell::new();
 const MAX_FMT_BUFFER_CAPACITY: usize = 1048576;
 const MAX_LOGGER_CAPACITY: usize = 1048576;
 
-/// **Internal API**
-///
 /// Returns a mut reference to the globally static logger [`LOGGER`]
+///
+/// **WARNING: this is not a stable API!**
+/// This piece of code is intended as part of the internal API of `quicklog`.
+/// It is marked as public since it is used in the codegen for the main logging
+/// macros. However, the code and API can change without warning in any version
+/// update to `quicklog`. It is highly discouraged to rely on this in any form.
 #[doc(hidden)]
 #[inline(always)]
 pub fn logger() -> &'static mut Quicklog {
@@ -615,6 +619,12 @@ impl Quicklog {
     }
 
     /// Returns data needed in preparation for writing to the queue.
+    ///
+    /// **WARNING: this is not a stable API!**
+    /// This piece of code is intended as part of the internal API of `quicklog`.
+    /// It is marked as public since it is used in the codegen for the main logging
+    /// macros. However, the code and API can change without warning in any version
+    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
     #[inline]
     pub fn prepare_write_serialize(&mut self) -> WriteState<WritePrepare<'_, SerializePrepare>> {
         WriteState {
@@ -626,6 +636,12 @@ impl Quicklog {
     }
 
     /// Returns data needed in preparation for writing to the queue.
+    ///
+    /// **WARNING: this is not a stable API!**
+    /// This piece of code is intended as part of the internal API of `quicklog`.
+    /// It is marked as public since it is used in the codegen for the main logging
+    /// macros. However, the code and API can change without warning in any version
+    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
     #[inline]
     pub fn prepare_write(&mut self) -> WriteState<WritePrepare<'_, Prepare<'_>>> {
         WriteState {
@@ -639,6 +655,12 @@ impl Quicklog {
     }
 
     /// Marks write as complete and commits it for reading.
+    ///
+    /// **WARNING: this is not a stable API!**
+    /// This piece of code is intended as part of the internal API of `quicklog`.
+    /// It is marked as public since it is used in the codegen for the main logging
+    /// macros. However, the code and API can change without warning in any version
+    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
     #[inline]
     pub fn finish_and_commit<F: FinishState>(&mut self, write_state: WriteState<WriteFinish<F>>) {
         self.finish_write(write_state);
@@ -646,6 +668,12 @@ impl Quicklog {
     }
 
     /// Marks write as complete by advancing local writer.
+    ///
+    /// **WARNING: this is not a stable API!**
+    /// This piece of code is intended as part of the internal API of `quicklog`.
+    /// It is marked as public since it is used in the codegen for the main logging
+    /// macros. However, the code and API can change without warning in any version
+    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
     #[inline]
     pub fn finish_write<F: FinishState>(&mut self, write_state: WriteState<WriteFinish<F>>) {
         let n = write_state.state.written;
@@ -654,17 +682,26 @@ impl Quicklog {
     }
 
     /// Commits all uncommitted writes to make slots available for reading.
+    ///
+    /// **WARNING: this is not a stable API!**
+    /// This piece of code is intended as part of the internal API of `quicklog`.
+    /// It is marked as public since it is used in the codegen for the main logging
+    /// macros. However, the code and API can change without warning in any version
+    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
     #[inline]
     pub fn commit_write(&mut self) {
         self.sender.commit_write();
     }
 }
 
-/// **WARNING: this is part of the public API and is primarily to aid in macro
-/// codegen.**
-///
 /// Function wrapper that just calls the passed function, ensuring that it is
 /// not expanded inline.
+///
+/// **WARNING: this is not a stable API!**
+/// This piece of code is intended as part of the internal API of `quicklog`.
+/// It is marked as public since it is used in the codegen for the main logging
+/// macros. However, the code and API can change without warning in any version
+/// update to `quicklog`. It is highly discouraged to rely on this in any form.
 #[inline(never)]
 #[cold]
 pub fn log_wrapper<F: FnOnce() -> Result<(), QueueError>>(f: F) -> Result<(), QueueError> {

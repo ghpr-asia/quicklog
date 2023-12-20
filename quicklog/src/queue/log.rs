@@ -167,10 +167,10 @@ impl ChunkWrite for LogHeader<'_> {}
 /// [`Serialize`](crate::serialize::Serialize) implementation.
 #[derive(Debug)]
 #[repr(C)]
-pub struct SerializeArgHeader {
-    pub type_of_arg: LogArgType,
-    pub size_of_arg: usize,
-    pub decode_fn: usize,
+pub(super) struct SerializeArgHeader {
+    pub(super) type_of_arg: LogArgType,
+    pub(super) size_of_arg: usize,
+    pub(super) decode_fn: usize,
 }
 
 impl ChunkWrite for SerializeArgHeader {}
@@ -178,19 +178,30 @@ impl ChunkWrite for SerializeArgHeader {}
 /// Header for logging arguments which are formatted into the buffer.
 #[derive(Debug)]
 #[repr(C)]
-pub struct FmtArgHeader {
-    pub type_of_arg: LogArgType,
-    pub size_of_arg: usize,
+pub(super) struct FmtArgHeader {
+    pub(super) type_of_arg: LogArgType,
+    pub(super) size_of_arg: usize,
 }
 
 impl ChunkWrite for FmtArgHeader {}
 
+/// **WARNING: this is not a stable API!**
+/// This piece of code is intended as part of the internal API of `quicklog`.
+/// It is marked as public since it is used in the codegen for the main logging
+/// macros. However, the code and API can change without warning in any version
+/// update to `quicklog`. It is highly discouraged to rely on this in any form.
 #[inline]
 pub const fn log_header_size() -> usize {
     size_of::<LogHeader>()
 }
 
 /// Computes overall size required for writing a log record.
+///
+/// **WARNING: this is not a stable API!**
+/// This piece of code is intended as part of the internal API of `quicklog`.
+/// It is marked as public since it is used in the codegen for the main logging
+/// macros. However, the code and API can change without warning in any version
+/// update to `quicklog`. It is highly discouraged to rely on this in any form.
 #[inline]
 pub fn log_size_required(args: &[(LogArgType, usize)]) -> usize {
     let mut size_required = 0;

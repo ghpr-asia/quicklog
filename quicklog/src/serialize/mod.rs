@@ -69,11 +69,14 @@ pub trait Serialize {
     }
 }
 
-/// **WARNING: this is part of the public API and is primarily to aid in macro
-/// codegen.**
-///
 /// Helper trait for splitting the output of decoding for collections of types
 /// implementing [`Serialize`].
+///
+/// **WARNING: this is not a stable API!**
+/// This piece of code is intended as part of the internal API of `quicklog`.
+/// It is marked as public since it is used in the codegen for the main logging
+/// macros. However, the code and API can change without warning in any version
+/// update to `quicklog`. It is highly discouraged to rely on this in any form.
 #[doc(hidden)]
 pub trait SerializeTpl: Serialize {
     /// Collects the outputs of [`Serialize::decode`] in an output buffer.
