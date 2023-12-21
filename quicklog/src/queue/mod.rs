@@ -29,7 +29,7 @@ pub struct Queue {
 
 impl Queue {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(capacity: usize) -> (Producer, Consumer) {
+    pub(crate) fn new(capacity: usize) -> (Producer, Consumer) {
         let capacity = next_power_of_two(capacity);
 
         // Double capacity to allow write overflow

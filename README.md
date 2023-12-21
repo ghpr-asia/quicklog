@@ -64,7 +64,7 @@ After implementing `Serialize` for user-defined types, there are two ways to ena
 use quicklog::{flush, info, init, Serialize};
 
 // derive `Serialize` macro
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 struct Foo {
     a: usize,
     b: String,

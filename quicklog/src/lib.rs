@@ -34,7 +34,9 @@
 //! # }
 //! ```
 //!
-//! # Core: `Serialize`
+//! The syntax accepted by the logging macros is similar to that of [`tracing`](https://docs.rs/tracing/latest/tracing/index.html#using-the-macros). However, do note that [`spans`](https://docs.rs/tracing/latest/tracing/index.html#spans) are not supported currently, and hence cannot be specified within the macros.
+//!
+//! # Core concept: `Serialize`
 //!
 //! `quicklog` provides a [`Serialize`] trait which is used to opt into fast logging. For
 //! convenience, a derive `Serialize` macro is provided to be used on relatively simple types
@@ -52,21 +54,23 @@
 //! use quicklog::{flush, info, init, serialize::Serialize, Serialize};
 //!
 //! // derive `Serialize` macro
-//! #[derive(Debug, Serialize)]
+//! #[derive(Serialize)]
 //! struct Foo {
 //!     a: usize,
 //!     b: String,
 //!     c: Vec<&'static str>
 //! }
 //!
+//! struct StrWrapper(&'static str);
+//!
 //! struct Bar {
-//!     s: &'static str,
+//!     s: StrWrapper,
 //! }
 //!
 //! impl Serialize for Bar {
 //!     #[inline]
 //!     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
-//!         self.s.encode(write_buf)
+//!         self.s.0.encode(write_buf)
 //!     }
 //!
 //!     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
@@ -77,7 +81,7 @@
 //!
 //!     #[inline]
 //!     fn buffer_size_required(&self) -> usize {
-//!         self.s.buffer_size_required()
+//!         self.s.0.buffer_size_required()
 //!     }
 //! }
 //!
@@ -88,7 +92,7 @@
 //!     c: vec!["a", "b", "c"]
 //! };
 //! let bar = Bar {
-//!     s: "hello world"
+//!     s: StrWrapper("hello world")
 //! };
 //! init!();
 //!
