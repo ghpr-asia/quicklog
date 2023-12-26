@@ -103,7 +103,7 @@ Due to some constraints, mixing of `Serialize` and `Debug`/`Display` format spec
 info!("hello world {:^} {:?} {}", 1, 2, 3);
 ```
 
-However, one can mix-and-match these arguments in the _structured fields_, for example:
+However, one can mix-and-match these arguments in the [_structured fields_](https://docs.rs/tracing/latest/tracing/#recording-fields), for example:
 
 ```rust
 info!(debug = ?some_debug_struct, display = %some_display_struct, serialize = serialize_struct, "serialize args in fmt str: {:^} {:^}", 3, 5);

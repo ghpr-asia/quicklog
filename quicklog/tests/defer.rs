@@ -1,8 +1,30 @@
-use quicklog::{commit, info_defer};
+use quicklog::{commit, commit_on_scope_end, info_defer};
 
 use common::{SerializeStruct, Something};
 
 mod common;
+
+enum FooError {
+    Foo,
+}
+
+/// Tests that `commit_on_scope_end` commits a write even if the function exits early.
+fn err_out() -> Result<(), FooError> {
+    let s = SerializeStruct {
+        symbol: String::from("Hello 2"),
+    };
+    commit_on_scope_end!();
+
+    info_defer!("This should be visible after this function: {:^}", s);
+
+    if 5 < 10 {
+        return Err(FooError::Foo);
+    }
+
+    // A call to commit here is unreachable!
+    // commit!();
+    Ok(())
+}
 
 fn main() {
     setup!();
@@ -32,6 +54,10 @@ fn main() {
         (),
         format!("Mix: debug={:?} display={} serialize=Hello", s1, s1)
     );
+
+    // Deferred commit
+    _ = err_out();
+    assert_message_equal!((), "This should be visible after this function: Hello 2");
 
     // Batch defer
     info_defer!("hello world 2");

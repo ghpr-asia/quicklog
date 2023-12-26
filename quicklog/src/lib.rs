@@ -2,9 +2,9 @@
 //!
 //! # Usage
 //!
-//! `quicklog` provides an API similar to that of the `log` crate through the five logging macros: `trace!`, `debug!`, `info!`, `warn!` and `error!`.
+//! `quicklog` provides an API similar to that of the `log` crate through the five logging macros: [`trace!`], [`debug!`], [`info!`], [`warn!`] and [`error!`].
 //!
-//! Note that the `init!()` macro needs to be called to initialize the logger before we can start logging.
+//! Note that the [`init!`] macro needs to be called to initialize the logger before we can start logging.
 //!
 //! ## Example
 //!
@@ -36,14 +36,14 @@
 //!
 //! # Core: `Serialize`
 //!
-//! `quicklog` provides a `Serialize` trait which is used to opt into fast logging. For
+//! `quicklog` provides a [`Serialize`] trait which is used to opt into fast logging. For
 //! convenience, a derive `Serialize` macro is provided to be used on relatively simple types
-//! (similar to `Debug`). For more complicated user-defined types, a manual implementation of the
+//! (similar to [`Debug`]/[`Display`]). For more complicated user-defined types, a manual implementation of the
 //! trait may be necessary.
 //!
 //! After implementing `Serialize` for user-defined types, there are two ways to enable `quicklog` to use them:
 //!
-//! 1. Place the argument before the format string, as part of the _structured fields_ (no prefix sigil is needed, unlike `?` and `%`). `quicklog` will automatically try to use the `Serialize` implementation for an argument placed in this position.
+//! 1. Place the argument before the format string, as part of the [_structured fields_](https://docs.rs/tracing/latest/tracing/#recording-fields) (no prefix sigil is needed, unlike `?` and `%`). `quicklog` will automatically try to use the `Serialize` implementation for an argument placed in this position.
 //!
 //! 2. Use the `{:^}` formatting specifier in the format string, similar to how `{:?}` and `{}` are used for arguments implementing the `Debug` and `Display` traits respectively.
 //!
@@ -155,12 +155,12 @@
 //! ## Customizing log output location and format
 //!
 //! Two interfaces are provided for configuring both the logging destination and output format.
-//! They are the `Flush` and `PatternFormatter` traits respectively.
+//! They are the [`Flush`] and [`PatternFormatter`] traits respectively.
 //!
 //! ### `Flush`
 //!
 //! The [`Flush`] trait is exposed via the `quicklog-flush` crate and specifies a single log
-//! destination. An implementor of `Flush` can be set as the default by passing it to the `with_flush!` macro after
+//! destination. An implementor of `Flush` can be set as the default by passing it to the [`with_flush!`] macro after
 //! calling `init!`.
 //!
 //! By default, logs are output to stdout via the provided [`StdoutFlusher`]. One can easily save logs to a file by using the provided [`FileFlusher`] instead.
@@ -324,7 +324,7 @@
 //!
 //! ## Deferred logging
 //!
-//! For more performance-sensitive applications, one can opt for the deferred logging macros: `trace_defer`, `debug_defer`, `info_defer`, `warn_defer` or `error_defer`. These macros accept the same logging syntax as their non-`defer` counterparts, but must be followed by an explicit call to `commit` in order for the logs to become visible via `flush`. This saves on a few potentially expensive atomic operations. This will most likely be useful when an application makes a series of logging calls consecutively in some kind of event loop, and only needs to flush/make visible those logs after the main events have been processed.
+//! For more performance-sensitive applications, one can opt for the deferred logging macros: [`trace_defer!`], [`debug_defer!`], [`info_defer!`], [`warn_defer!`] or [`error_defer!`]. These macros accept the same logging syntax as their non-`defer` counterparts, but must be followed by an explicit call to the [`commit!`] macro in order for the logs to become visible via `flush`. This saves on a few potentially expensive atomic operations. This will most likely be useful when an application makes a series of logging calls consecutively in some kind of event loop, and only needs to flush/make visible those logs after the main events have been processed.
 //! ```rust no_run
 //! use quicklog::{commit, flush, info_defer, init};
 //!
@@ -346,10 +346,91 @@
 //! # }
 //! ```
 //!
+//! A useful mental model would be to think of the normal logging macros (`info!`, `warn!`, etc) as
+//! a call to their deferred equivalents, followed by an immediate call to `commit!`:
+//!
+//! ```rust no_run
+//! # use quicklog::{commit, info, info_defer};
+//! # fn main() {
+//! info!("hello world!");
+//!
+//! // under the hood, effectively the same as
+//! info_defer!("hello world!");
+//! commit!();
+//! # }
+//! ```
+//!
+//! ### Caveats
+//!
+//! Note that the call to `commit!` must be reachable in order to guarantee that data written so
+//! far is committed and becomes visible. This may not always be the case, for instance, when a
+//! function exits early due to an error:
+//!
+//! ```rust no_run
+//! use quicklog::{commit, info_defer};
+//!
+//! enum IntError {
+//!     WrongInt
+//! }
+//!
+//! fn possible_err(some_val: usize) -> Result<(), IntError> {
+//!     info_defer!("Entered possible_err with value: {:^}", some_val);
+//!
+//!     // hot path: perform some computations
+//!     // ...
+//!
+//!     // possible error path: function will exit without calling `commit!`
+//!     if some_val < 5 {
+//!         return Err(IntError::WrongInt);
+//!     }
+//!
+//!     commit!();
+//!     Ok(())
+//! }
+//! ```
+//!
+//! In this case, the log entry called by `info_defer!` at the start of the function will not be
+//! immediately visible when the function exits until the next call to `commit!` or a non-`defer`
+//! logging macro. Naturally, one could just insert another `commit!` call within the error branch
+//! and things would be fine. Alternatively, if one doesn't care about seeing the results
+//! immediately and `commit!` is called eventually after the function returns, then this is fine as
+//! well.
+//!
+//! Otherwise, to guarantee that the results of a deferred log will be visible after the
+//! function returns, regardless of which codepath it takes, use the [`commit_on_scope_end!`] macro. Using
+//! the above example:
+//! ```rust no_run
+//! # use quicklog::{commit_on_scope_end, info_defer};
+//! # enum IntError {
+//! #     WrongInt
+//! # }
+//! fn possible_err(some_val: usize) -> Result<(), IntError> {
+//!     info_defer!("Entered possible_err with value: {:^}", some_val);
+//!     // will always call `commit!` when this function returns
+//!     commit_on_scope_end!();
+//!
+//!     // hot path: perform some computations
+//!     // ...
+//!
+//!     // possible error path: function will exit without calling `commit!`
+//!     if some_val < 5 {
+//!         return Err(IntError::WrongInt);
+//!     }
+//!
+//!     // no longer need to call commit
+//!     // commit!();
+//!     Ok(())
+//! }
+//! ```
+//!
+//! Note that `commit_on_scope_end!` implicitly does the same thing as `commit!`, but *at the end of the
+//! current scope*. So in most cases you would probably want to put it at the top-level/outermost scope
+//! within a function.
+//!
 //! ## Configuration of max logging capacity
 //!
 //! The default size used for the backing queue used by `quicklog` is 1MB. To
-//! specify a different size, pass the desired size to the [`init`] macro.
+//! specify a different size, pass the desired size to the `init!` macro.
 //! ```no_run
 //! # use quicklog::{init, info};
 //! # fn main() {
@@ -371,20 +452,37 @@
 //! Note that this size may be rounded up or adjusted for better performance.
 //!
 //! [`Serialize`]: serialize::Serialize
+//! [`Debug`]: std::fmt::Debug
+//! [`Display`]: std::fmt::Display
 //! [`StdoutFlusher`]: crate::StdoutFlusher
 //! [`FileFlusher`]: crate::FileFlusher
 //! [`PatternFormatter`]: crate::formatter::PatternFormatter
 //! [`JsonFormatter`]: crate::formatter::JsonFormatter
 //! [`Metadata`]: crate::queue::Metadata
 //! [`event!`]: crate::event
+//! [`commit!`]: crate::commit
+//! [`commit_on_scope_end!`]: crate::commit_on_scope_end
+//! [`trace_defer!`]: crate::trace_defer
+//! [`debug_defer!`]: crate::debug_defer
+//! [`info_defer!`]: crate::info_defer
+//! [`warn_defer!`]: crate::warn_defer
+//! [`error_defer!`]: crate::error_defer
+//! [`trace!`]: crate::trace
+//! [`debug!`]: crate::debug
+//! [`info!`]: crate::info
+//! [`warn!`]: crate::warn
+//! [`error!`]: crate::error
+//! [`init!`]: crate::init
+//! [`with_flush!`]: crate::with_flush
+
+/// Macros for logging and modifying the currently used [`Flush`] handlers,
+/// along with some utilities.
+mod macros;
 
 /// Formatters for structuring log output.
 pub mod formatter;
 /// Contains logging levels and filters.
 pub mod level;
-/// Macros for logging and modifying the currently used [`Flush`] handlers,
-/// along with some utilities.
-pub mod macros;
 /// Operations and types involved with writing/reading to the global buffer.
 pub mod queue;
 /// [`Serialize`] trait for serialization of various data types to aid in
@@ -723,4 +821,21 @@ impl Quicklog {
 #[cold]
 pub fn log_wrapper<F: FnOnce() -> Result<(), QueueError>>(f: F) -> Result<(), QueueError> {
     f()
+}
+
+#[doc(hidden)]
+pub mod __macro_helpers {
+    /// **WARNING: this is not a stable API!**
+    /// This piece of code is intended as part of the internal API of `quicklog`.
+    /// It is marked as public since it is used in the codegen for the main logging
+    /// macros. However, the code and API can change without warning in any version
+    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
+    pub struct CommitOnDrop;
+
+    impl Drop for CommitOnDrop {
+        #[inline(always)]
+        fn drop(&mut self) {
+            crate::logger().commit_write();
+        }
+    }
 }
