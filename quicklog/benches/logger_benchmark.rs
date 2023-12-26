@@ -125,7 +125,7 @@ fn bench_channel_send(b: &mut Bencher) {
             let arg = nested.clone();
             channel.0.send(Box::new(arg)).unwrap_or(());
         },
-        { while channel.1.recv_timeout(Duration::from_millis(10)).is_ok() {} }
+        while channel.1.recv_timeout(Duration::from_millis(10)).is_ok() {}
     )
 }
 

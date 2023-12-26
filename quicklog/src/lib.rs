@@ -618,6 +618,23 @@ impl Quicklog {
         Ok(())
     }
 
+    /// Helper function for benchmarks to quickly pretend all logs have been
+    /// read and committed.
+    #[cfg(feature = "bench")]
+    pub fn flush_noop(&mut self) -> FlushResult {
+        let chunk_len = {
+            let chunk = self
+                .receiver
+                .prepare_read()
+                .map_err(|_| FlushError::Empty)?;
+            chunk.len()
+        };
+        self.receiver.finish_read(chunk_len);
+        self.receiver.commit_read();
+
+        Err(FlushError::Empty)
+    }
+
     /// Returns data needed in preparation for writing to the queue.
     ///
     /// **WARNING: this is not a stable API!**

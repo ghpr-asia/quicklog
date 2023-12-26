@@ -39,14 +39,23 @@ trybuild = "1.0.85"
 [[bench]]
 name = "logger_benchmark"
 harness = false
+# cargo doesn't support auto-enabling of features
+required-features = ["bench"]
 
 [[bench]]
 name = "quicklog_benchmark"
 harness = false
+# cargo doesn't support auto-enabling of features
+required-features = ["bench"]
 
 [[bench]]
 name = "serialize_benchmark"
 harness = false
+# cargo doesn't support auto-enabling of features
+required-features = ["bench"]
 
 [badges]
 maintenance = { status = "actively-developed" }
+
+[features]
+bench = []

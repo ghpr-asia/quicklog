@@ -103,7 +103,6 @@ fn bench_multiple_quicklog_nested(b: &mut Bencher) {
         for _ in 0..10 {
             black_box(quicklog::info!(nested, "Some data:"));
         }
-        flush_all!();
     });
 }
 
@@ -123,7 +122,6 @@ fn bench_multiple_deferred_quicklog_nested(b: &mut Bencher) {
             black_box(quicklog::info_defer!(nested, "Some data:"));
         }
         quicklog::commit!();
-        flush_all!();
     });
 }
 

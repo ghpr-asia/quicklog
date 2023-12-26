@@ -3,39 +3,25 @@ use quicklog::serialize::Serialize;
 #[macro_export]
 macro_rules! loop_with_cleanup {
     ($bencher:expr, $loop_f:expr) => {
-        loop_with_cleanup!($bencher, $loop_f, flush_all!())
+        loop_with_cleanup!($bencher, $loop_f, quicklog::logger().flush_noop())
     };
 
     ($bencher:expr, $loop_f:expr, $cleanup_f:expr) => {{
         quicklog::init!();
 
         $bencher.iter_custom(|iters| {
-            let start = quicklog::Quicklog::now();
+            let start = std::time::Instant::now();
 
             for _i in 0..iters {
                 $loop_f;
+                _ = $cleanup_f;
             }
 
             let end = start.elapsed();
 
-            $cleanup_f;
-
             end
         })
     }};
-}
-
-#[macro_export]
-macro_rules! flush_all {
-    () => {
-        loop {
-            match quicklog::flush!() {
-                Ok(()) => {}
-                Err(quicklog::queue::FlushError::Empty) => break,
-                Err(e) => panic!("{:?}", e),
-            }
-        }
-    };
 }
 
 #[allow(dead_code)]
