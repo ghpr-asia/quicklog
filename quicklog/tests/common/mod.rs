@@ -65,6 +65,12 @@ pub(crate) struct Something {
     pub(crate) some_str: &'static str,
 }
 
+impl Something {
+    pub(crate) fn some_str(&self) -> &'static str {
+        self.some_str
+    }
+}
+
 impl Serialize for Something {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
         self.some_str.encode(write_buf)
@@ -85,32 +91,6 @@ impl Serialize for Something {
 impl std::fmt::Display for Something {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Something display: {}", self.some_str)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct NestedSomething {
-    pub(crate) thing: Something,
-}
-
-#[derive(Clone)]
-pub(crate) struct A {
-    pub(crate) price: u64,
-    pub(crate) symbol: &'static str,
-    pub(crate) exch_id: u64,
-}
-
-impl A {
-    pub(crate) fn get_price(&self) -> u64 {
-        self.price
-    }
-
-    pub(crate) fn get_exch_id(&self) -> u64 {
-        self.exch_id
-    }
-
-    pub(crate) fn get_symbol(&self) -> &'static str {
-        self.symbol
     }
 }
 

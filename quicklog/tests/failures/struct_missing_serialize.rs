@@ -3,13 +3,15 @@ use quicklog::info;
 #[path = "../common/mod.rs"]
 mod common;
 
-use common::A;
+struct NoSerialize;
+
+struct NoSerializeStruct {
+    something: NoSerialize,
+}
 
 fn main() {
-    let s1 = A {
-        price: 999,
-        symbol: "Hello world 1",
-        exch_id: 65,
+    let s = NoSerializeStruct {
+        something: NoSerialize,
     };
-    info!(s1, "struct does not implement Serialize");
+    info!(s, "struct does not implement Serialize");
 }

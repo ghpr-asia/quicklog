@@ -786,6 +786,15 @@ mod tests {
     }
 
     #[test]
+    fn serialize_box() {
+        let a = Box::new(5);
+        let mut buf = [0; 256];
+        _ = a.encode(&mut buf);
+
+        decode_and_assert!(a, format!("{:?}", a), &buf);
+    }
+
+    #[test]
     fn serialize_option() {
         let a: Option<usize> = Some(5);
         let b: Option<bool> = None;
