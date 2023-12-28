@@ -259,7 +259,8 @@
 //!    - This is done by setting the `QUICKLOG_MIN_LEVEL` environment variable which will be read during program compilation. For example, setting `QUICKLOG_MIN_LEVEL=ERR` will _generate_ the code for only `error`-level logs, while the other logs expand to nothing in the final output. Some accepted values for the environment variable include `INF`, `info`, `Info`, `2` for the info level, with similar syntax for the other levels as well.
 //!
 //! 2. At run-time
-//!    - This uses a simple function, [`set_max_level`](quicklog/src/level.rs#L133), to set the maximum log level at runtime. This allows for more dynamic interleaving of logs, for example:
+//!    - By default, the log filter is set to `Trace` in Debug and `Info` in Release. This means that all logs with level `Trace` and above will be logged in Debug, whereas only logs with level `Info` and above will be logged in Release. See the documentation for [`Level`] for more information.
+//!    - To modify this filter at runtime, the [`set_max_level`] function is provided. This allows for more dynamic interleaving of logs, for example:
 //! ```rust no_run
 //! use quicklog::{error, info, init, level::{set_max_level, LevelFilter}};
 //!
@@ -275,6 +276,7 @@
 //!
 //! // only log errors from here on
 //! set_max_level(LevelFilter::Error);
+//! // `Info` logs have a lower level than `Error`, so this log will not be recorded.
 //! // this macro will be *expanded* during compilation, but not *executed*!
 //! info!("hello world");
 //! // recorded
@@ -478,6 +480,8 @@
 //! [`error!`]: crate::error
 //! [`init!`]: crate::init
 //! [`with_flush!`]: crate::with_flush
+//! [`set_max_level`]: crate::level::set_max_level
+//! [`Level`]: crate::level::Level
 
 /// Macros for logging and modifying the currently used [`Flush`] handlers,
 /// along with some utilities.

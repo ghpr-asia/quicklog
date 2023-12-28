@@ -93,7 +93,7 @@ macro_rules! init {
     };
 }
 
-/// Checks if the current level we are trying to log is enabled
+/// Checks if the current level we are trying to log is enabled.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! is_level_enabled {
