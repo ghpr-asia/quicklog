@@ -5,7 +5,7 @@
 fn cold() {}
 
 #[inline]
-pub fn likely(b: bool) -> bool {
+pub(crate) fn likely(b: bool) -> bool {
     if !b {
         cold()
     }
@@ -13,7 +13,7 @@ pub fn likely(b: bool) -> bool {
 }
 
 #[inline]
-pub fn unlikely(b: bool) -> bool {
+pub(crate) fn unlikely(b: bool) -> bool {
     if b {
         cold()
     }

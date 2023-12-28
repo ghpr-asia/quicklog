@@ -474,14 +474,34 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
 
     let check = match level {
         Level::Info | Level::Event => quote! {
-            quicklog::utils::likely(quicklog::is_level_enabled!(#level))
+            __likely(quicklog::is_level_enabled!(#level))
         },
         Level::Trace | Level::Debug | Level::Warn | Level::Error => quote! {
-            quicklog::utils::unlikely(quicklog::is_level_enabled!(#level))
+            __unlikely(quicklog::is_level_enabled!(#level))
         },
     };
 
     quote! {{
+        #[inline]
+        #[cold]
+        fn __cold() {}
+
+        #[inline(always)]
+        fn __likely(b: bool) -> bool {
+            if !b {
+                __cold()
+            }
+            b
+        }
+
+        #[inline(always)]
+        fn __unlikely(b: bool) -> bool {
+            if b {
+                __cold()
+            }
+            b
+        }
+
         if #check {
             #log_wrapper
         } else {

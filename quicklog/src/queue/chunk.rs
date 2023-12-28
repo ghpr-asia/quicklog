@@ -154,19 +154,9 @@ impl<T> Cursor<T>
 where
     T: AsRef<[u8]>,
 {
-    /// Whether there are remaining bytes to read.
-    pub fn is_empty(&self) -> bool {
-        self.remaining_size() == 0
-    }
-
-    /// Remaining bytes to read.
-    pub fn remaining_size(&self) -> usize {
-        self.inner.as_ref().len() - self.pos
-    }
-
     /// Reconstructs a type implementing [`ChunkRead`] by reading through the
     /// underlying buffer(s).
-    pub fn read<C: ChunkRead>(&mut self) -> ReadResult<C> {
+    pub(crate) fn read<C: ChunkRead>(&mut self) -> ReadResult<C> {
         let required_size = C::bytes_required();
         let inner = self.inner.as_ref();
         let buf = {
@@ -185,7 +175,7 @@ where
 
     /// Reads `n` bytes from the underlying buffer(s), and returns a slice if
     /// there is enough capacity.
-    pub fn read_bytes(&mut self, n: usize) -> ReadResult<&[u8]> {
+    pub(crate) fn read_bytes(&mut self, n: usize) -> ReadResult<&[u8]> {
         let inner = self.inner.as_ref();
         let buf = {
             let len = self.pos.min(inner.len());
@@ -200,7 +190,7 @@ where
         Ok(res)
     }
 
-    pub fn read_decode_each(
+    pub(crate) fn read_decode_each(
         &mut self,
         decode_fn: DecodeEachFn,
         out: &mut Vec<String>,
