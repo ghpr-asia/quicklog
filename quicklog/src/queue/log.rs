@@ -21,7 +21,6 @@ pub enum FlushError {
 /// The type of arguments found in the log record.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(usize)]
-#[repr(C)]
 pub enum ArgsKind {
     /// All arguments implement [`Serialize`](crate::serialize::Serialize).
     ///
