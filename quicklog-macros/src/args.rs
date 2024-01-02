@@ -350,15 +350,24 @@ impl Parse for Args {
             }
 
             prefixed_fields.push_value(input.parse()?);
-            if let Some(comma) = input.parse::<Option<Token![,]>>()? {
-                if input.is_empty() {
-                    return Err(fail_comma(comma));
+            let Some(comma) = input.parse::<Option<Token![,]>>()? else {
+                // Error: no comma, but has un-parsed remaining input after the
+                // previously parsed argument
+                if !input.is_empty() {
+                    return Err(syn::parse::Error::new(
+                        prefixed_fields.last().unwrap().arg().span(),
+                        "missing comma following argument",
+                    ));
                 }
 
-                prefixed_fields.push_punct(comma);
-            } else {
                 break;
+            };
+
+            if input.is_empty() {
+                return Err(fail_comma(comma));
             }
+
+            prefixed_fields.push_punct(comma);
         }
 
         if let Ok(format_string) = input.parse::<LitStr>() {

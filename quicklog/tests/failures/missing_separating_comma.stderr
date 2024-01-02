@@ -1,0 +1,5 @@
+error: missing comma following argument
+ --> tests/failures/missing_separating_comma.rs:6:15
+  |
+6 |     info!(x, ?y "hello world");
+  |               ^
