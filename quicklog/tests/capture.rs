@@ -4,7 +4,8 @@ use common::{BigStruct, SerializeStruct};
 
 mod common;
 
-fn main() {
+#[test]
+fn macros_param_capture() {
     setup!();
 
     let s = SerializeStruct {

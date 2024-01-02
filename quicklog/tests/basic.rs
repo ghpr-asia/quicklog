@@ -4,7 +4,8 @@ use common::Something;
 
 mod common;
 
-fn main() {
+#[test]
+fn macros_basic() {
     setup!();
 
     // Literal

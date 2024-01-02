@@ -4,7 +4,8 @@ use common::{json::*, SerializeStruct, Something, TestFormatter};
 
 mod common;
 
-fn main() {
+#[test]
+fn macros_json() {
     setup!();
     with_json_formatter!();
 

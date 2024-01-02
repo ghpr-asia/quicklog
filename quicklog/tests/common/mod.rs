@@ -2,12 +2,7 @@
 #![allow(dead_code)]
 
 use chrono::{DateTime, Utc};
-use quicklog::{
-    formatter::PatternFormatter,
-    queue::Metadata,
-    serialize::{DecodeFn, Serialize},
-    Flush,
-};
+use quicklog::{formatter::PatternFormatter, queue::Metadata, serialize::Serialize, Flush};
 
 pub(crate) struct VecFlusher {
     pub(crate) vec: &'static mut Vec<String>,
@@ -156,10 +151,6 @@ impl std::fmt::Display for SimpleStruct {
     }
 }
 
-pub(crate) const fn get_decode<T: Serialize>(_: &T) -> DecodeFn {
-    T::decode
-}
-
 #[macro_export]
 macro_rules! setup {
     () => {
@@ -182,21 +173,6 @@ macro_rules! flush_all {
             }
         }
     };
-}
-
-#[macro_export]
-macro_rules! decode_and_assert {
-    ($decode:expr, $buf:expr) => {{
-        let (out, rest) = $crate::common::get_decode(&$decode)($buf);
-        assert_eq!(format!("{}", $decode), out);
-        rest
-    }};
-
-    ($decode:expr, $expected:expr, $buf:expr) => {{
-        let (out, rest) = $crate::common::get_decode(&$decode)($buf);
-        assert_eq!($expected, out);
-        rest
-    }};
 }
 
 pub(crate) mod json {
@@ -294,6 +270,7 @@ macro_rules! assert_messages {
 
 #[macro_export]
 macro_rules! assert_message_equal {
+    ($format_string:expr) => { assert_message_equal!({}, $format_string); };
     ($f:expr, $format_string:expr) => { helper_assert!(@ $f, $format_string, common::message_from_log_line) };
 }
 

@@ -26,7 +26,8 @@ fn err_out() -> Result<(), FooError> {
     Ok(())
 }
 
-fn main() {
+#[test]
+fn macros_deferred() {
     setup!();
 
     let s = SerializeStruct {
@@ -40,24 +41,24 @@ fn main() {
     info_defer!("hello world");
     assert_no_messages!();
     commit!();
-    assert_message_equal!((), "hello world");
+    assert_message_equal!("hello world");
 
     info_defer!(s, "Serialize:");
     assert_no_messages!();
     commit!();
-    assert_message_equal!((), "Serialize: s=Hello");
+    assert_message_equal!("Serialize: s=Hello");
 
     info_defer!(debug = ?s1, display = %s1, serialize = s, "Mix:");
     assert_no_messages!();
     commit!();
-    assert_message_equal!(
-        (),
-        format!("Mix: debug={:?} display={} serialize=Hello", s1, s1)
-    );
+    assert_message_equal!(format!(
+        "Mix: debug={:?} display={} serialize=Hello",
+        s1, s1
+    ));
 
     // Deferred commit
     _ = err_out();
-    assert_message_equal!((), "This should be visible after this function: Hello 2");
+    assert_message_equal!("This should be visible after this function: Hello 2");
 
     // Batch defer
     info_defer!("hello world 2");
