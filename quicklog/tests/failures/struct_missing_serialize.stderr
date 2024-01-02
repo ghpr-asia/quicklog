@@ -27,9 +27,9 @@ error[E0277]: the trait bound `NoSerializeStruct: quicklog::serialize::Serialize
            and $N others
    = note: required for `&NoSerializeStruct` to implement `quicklog::serialize::Serialize`
    = note: required for `(&NoSerializeStruct,)` to implement `SerializeTpl`
-note: required by a bound in `_decode_fn`
+note: required by a bound in `__decode_fn`
   --> tests/failures/struct_missing_serialize.rs:16:5
    |
 16 |     info!(s, "struct does not implement Serialize");
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `_decode_fn`
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `__decode_fn`
    = note: this error originates in the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -21,7 +21,7 @@
 //! ```rust
 //! use quicklog::level::{set_max_level, LevelFilter};
 //! use quicklog::queue::FlushError;
-//! use quicklog::{flush, info, init, error};
+//! use quicklog::{error, flush, info, init};
 //!
 //! # fn main() {
 //! init!();
@@ -67,8 +67,8 @@
 /// # Examples
 ///
 /// ```rust
-/// use quicklog::level::{set_max_level, Level, LevelFilter};
 /// use quicklog::is_level_enabled;
+/// use quicklog::level::{set_max_level, Level, LevelFilter};
 ///
 /// # fn main() {
 /// assert!(Level::Trace < Level::Debug);

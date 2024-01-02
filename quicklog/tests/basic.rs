@@ -52,10 +52,22 @@ fn main() {
         let s2_boxed = Box::new(s2.clone());
         let some_str = "hello world";
 
+        let now = std::time::Instant::now();
+        let then = now + std::time::Duration::from_millis(30);
+        let state = 42;
+
         // Single prefixed field without name
         assert_message_equal!(
-            info!(%s2_boxed, "single eager display with prefix:"),
-            format!("single eager display with prefix: s2_boxed={}", s2_boxed)
+            info!(
+            %s2_boxed,
+            state,
+            some_time = then.duration_since(now).as_secs_f64(),
+            "single eager display with prefix:"
+            ),
+            format!(
+                "single eager display with prefix: s2_boxed={} state=42 some_time=0.03",
+                s2_boxed
+            )
         );
         // Single prefixed field with name
         assert_message_equal!(

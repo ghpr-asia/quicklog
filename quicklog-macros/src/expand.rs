@@ -15,7 +15,10 @@ impl IdentGen {
 
     fn gen(&mut self) -> &Ident {
         let idx = self.0.len();
-        let ident = Ident::new(&"x".repeat(idx + 1), Span::call_site());
+        let ident = Ident::new(
+            &("__".to_string() + &"x".repeat(idx + 1)),
+            Span::call_site(),
+        );
         self.0.push(ident);
 
         self.0.last().unwrap()
@@ -98,7 +101,7 @@ impl Codegen {
 
                 // Entire format string + format args are wrapped into one argument
                 args_alloc.push(quote! {
-                    let #ident = state.format_in(format_args!(#original_fmt_str #fmt_args));
+                    let #ident = __state.format_in(format_args!(#original_fmt_str #fmt_args));
                 });
                 args_in_order.push(LogArg::new(ArgType::Fmt, ident.into_token_stream()));
 
@@ -118,7 +121,7 @@ impl Codegen {
             let ident = ident_gen.gen();
 
             args_alloc.push(quote! {
-                let #ident = state.format_in(format_args!(#formatter, #arg));
+                let #ident = __state.format_in(format_args!(#formatter, #arg));
             });
             args_in_order.push(LogArg::new(ArgType::Fmt, ident.into_token_stream()));
         }
@@ -135,23 +138,23 @@ impl Codegen {
         // for writing to the queue
         let state = if all_serialize {
             quote! {
-                let mut state = logger.prepare_write_serialize();
+                let mut __state = __logger.prepare_write_serialize();
             }
         } else {
             quote! {
-                let mut state = logger.prepare_write();
+                let mut __state = __logger.prepare_write();
             }
         };
         let prologue = quote! {
-            let mut logger = quicklog::logger();
-            let now = quicklog::Quicklog::now();
+            let mut __logger = quicklog::logger();
+            let __now = quicklog::Quicklog::now();
             #state
             #(#args_alloc)*
-            let size = #get_total_sizes;
-            let mut state = state.start_write(size)?;
+            let __size = #get_total_sizes;
+            let mut __state = __state.start_write(__size)?;
 
-            let header = quicklog::queue::LogHeader::new(&META, now, #args_kind);
-            state.write(&header);
+            let __header = quicklog::queue::LogHeader::new(&__META, __now, #args_kind);
+            __state.write(&__header);
         };
 
         // Metadata construction
@@ -162,14 +165,14 @@ impl Codegen {
             .collect();
         let json = matches!(level, Level::Event);
         let metadata_write = quote! {
-            const NAMES: &'static [&'static str] = &[#(#structured_names),*];
-            static META: quicklog::queue::Metadata = quicklog::queue::Metadata::new(
+            const __NAMES: &'static [&'static str] = &[#(#structured_names),*];
+            static __META: quicklog::queue::Metadata = quicklog::queue::Metadata::new(
                 std::module_path!(),
                 std::file!(),
                 std::line!(),
                 #level,
                 #fmt_str,
-                NAMES,
+                __NAMES,
                 #json,
             );
         };
@@ -227,8 +230,8 @@ impl Codegen {
             // the argument header
             let args: Vec<&TokenStream2> = all_args.iter().map(|arg| &arg.token).collect();
             let args_kind =
-                quote! { quicklog::queue::ArgsKind::AllSerialize(_decode_fn(&(#(&#args,)*))) };
-            let write = quote! { state.write(&(#(&#args,)*)); };
+                quote! { quicklog::queue::ArgsKind::AllSerialize(__decode_fn(&(#(&#args,)*))) };
+            let write = quote! { __state.write(&(#(&#args,)*)); };
 
             return (args_kind, write);
         }
@@ -241,8 +244,10 @@ impl Codegen {
             .map(|arg| {
                 let arg_tok = &arg.token;
                 match arg.ty {
-                    ArgType::Fmt => quote! { state.write_str(#arg_tok); },
-                    ArgType::Serialize => quote! {  state.write_serialize(&#arg_tok); },
+                    ArgType::Fmt => quote! { __state.write_str(#arg_tok); },
+                    ArgType::Serialize => {
+                        quote! {  __state.write_serialize(&#arg_tok); }
+                    }
                 }
             })
             .collect();
@@ -424,13 +429,13 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
 
     let finish = if defer_commit {
         quote! {
-            let finished = state.finish();
-            logger.finish_write(finished);
+            let finished = __state.finish();
+            __logger.finish_write(finished);
         }
     } else {
         quote! {
-            let finished = state.finish();
-            logger.finish_and_commit(finished);
+            let finished = __state.finish();
+            __logger.finish_and_commit(finished);
         }
     };
 
@@ -441,7 +446,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
             #metadata
 
             #[inline(always)]
-            fn _decode_fn<T: quicklog::serialize::SerializeTpl>(_a: &T) -> quicklog::serialize::DecodeEachFn {
+            fn __decode_fn<T: quicklog::serialize::SerializeTpl>(_a: &T) -> quicklog::serialize::DecodeEachFn {
                 T::decode_each
             }
 
