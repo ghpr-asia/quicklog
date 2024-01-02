@@ -1,5 +1,5 @@
-error: expected identifier
-  --> tests/failures/prefixed_expr_without_name.rs:10:12
+error: expected identifier; expressions or non-identifiers must be accompanied by a name, e.g. info!(some_expr = ?&x, ...)
+  --> tests/failures/prefixed_expr_without_name.rs:10:11
    |
 10 |     info!(?&x);
-   |            ^
+   |           ^^^

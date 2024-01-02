@@ -1,5 +1,5 @@
-error: expected identifier
+error: expected identifier; expressions or non-identifiers must be accompanied by a name, e.g. info!(some_expr = &x, ...)
  --> tests/failures/expr_without_name_2.rs:8:11
   |
 8 |     info!(&x);
-  |           ^
+  |           ^^

@@ -1,7 +1,5 @@
-error: unexpected end of input, expected an expression
- --> tests/failures/trailing_comma.rs:4:5
+error: trailing comma not accepted
+ --> tests/failures/trailing_comma.rs:4:27
   |
 4 |     info!("trailing comma",);
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: this error originates in the macro `info` (in Nightly builds, run with -Z macro-backtrace for more info)
+  |                           ^

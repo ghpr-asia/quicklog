@@ -3,8 +3,9 @@ use std::fmt::Display;
 use proc_macro2::{TokenStream as TokenStream2, TokenTree};
 use quote::{quote, ToTokens};
 use syn::{
-    parse::{self, Parse, ParseStream},
+    parse::{self, discouraged::Speculative, Parse, ParseStream},
     punctuated::Punctuated,
+    spanned::Spanned,
     Expr, Ident, LitStr, Token,
 };
 
@@ -31,7 +32,19 @@ pub(crate) struct DotDelimitedIdent(Punctuated<Ident, Token![.]>);
 
 impl Parse for DotDelimitedIdent {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        Ok(Self(Punctuated::parse_separated_nonempty(input)?))
+        // This must be a "pure" optionally dot-delimited ident, meaning
+        // something like `a.b.c`, and not `a.b.c()` which is a function call.
+        //
+        // Only advances stream if parse is successful.
+        let input2 = input.fork();
+        let parsed = Punctuated::parse_separated_nonempty(&input2)?;
+
+        if input2.peek(syn::token::Paren) {
+            return Err(input.error("expected identifier"));
+        }
+
+        input.advance_to(&input2);
+        Ok(Self(parsed))
     }
 }
 
@@ -100,22 +113,55 @@ impl Parse for PrefixedField {
         // Look ahead to check if this contains a name
         let begin = input.fork();
         let mut cursor = begin.cursor();
-        let mut has_name = false;
-        while let Some((tt, next)) = cursor.token_tree() {
-            match &tt {
-                TokenTree::Punct(punct) if punct.as_char() == ',' => break,
-                TokenTree::Punct(punct) if punct.as_char() == '=' => {
-                    has_name = true;
-                    break;
+        let has_name = {
+            let mut has_name = false;
+            while let Some((tt, next)) = cursor.token_tree() {
+                match &tt {
+                    TokenTree::Punct(punct) if punct.as_char() == ',' => break,
+                    TokenTree::Punct(punct) if punct.as_char() == '=' => {
+                        has_name = true;
+                        break;
+                    }
+                    _ => cursor = next,
                 }
-                _ => cursor = next,
             }
-        }
+
+            has_name
+        };
 
         let parsed = if has_name {
             Self::Named(input.parse()?)
         } else {
-            Self::Unnamed(input.parse()?)
+            match input.parse() {
+                Ok(t) => Self::Unnamed(t),
+                Err(e) => {
+                    let remaining = input.fork();
+                    let mut arg_tokens = TokenStream2::new();
+                    while !remaining.is_empty() {
+                        if remaining.parse::<Option<Token![,]>>()?.is_some() {
+                            break;
+                        }
+
+                        let token: TokenTree = remaining.parse()?;
+                        arg_tokens.extend(token.into_token_stream());
+                    }
+                    let tokens =
+                        arg_tokens
+                            .clone()
+                            .into_iter()
+                            .fold(String::new(), |mut acc, tok| {
+                                // Operating on tokens will insert whitespace, so
+                                // convert to string here for prettier formatting
+                                acc.push_str(tok.to_string().as_str());
+                                acc
+                            });
+
+                    return Err(syn::parse::Error::new_spanned(arg_tokens, format!(
+                        "{}; expressions or non-identifiers must be accompanied by a name, e.g. info!(some_expr = {}, ...)",
+                        e, tokens
+                    )));
+                }
+            }
         };
 
         Ok(parsed)
@@ -162,14 +208,24 @@ impl ToTokens for PrefixedExpr {
 
 impl<T: Parse> Parse for PrefixedArg<T> {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        if input.peek(Token![?]) {
-            input.parse::<Token![?]>()?;
-
-            Ok(PrefixedArg::Debug(input.parse()?))
-        } else if input.peek(Token![%]) {
-            input.parse::<Token![%]>()?;
-
-            Ok(PrefixedArg::Display(input.parse()?))
+        // Only advances stream if parse is successful.
+        let input2 = input.fork();
+        if input2.parse::<Option<Token![?]>>()?.is_some() {
+            match input2.parse() {
+                Ok(arg) => {
+                    input.advance_to(&input2);
+                    Ok(PrefixedArg::Debug(arg))
+                }
+                Err(e) => Err(e),
+            }
+        } else if input2.parse::<Option<Token![%]>>()?.is_some() {
+            match input2.parse() {
+                Ok(arg) => {
+                    input.advance_to(&input2);
+                    Ok(PrefixedArg::Display(arg))
+                }
+                Err(e) => Err(e),
+            }
         } else {
             Ok(PrefixedArg::Serialize(input.parse()?))
         }
@@ -282,20 +338,23 @@ pub(crate) struct Args {
 impl Parse for Args {
     fn parse(input: ParseStream) -> parse::Result<Self> {
         if input.is_empty() {
-            return Err(input.error("no tokens passed to macro"));
+            return Err(input.error("no logging arguments or message"));
         }
 
         let mut prefixed_fields: PrefixedFields = Punctuated::new();
         loop {
-            if input.is_empty() || input.peek(LitStr) {
-                // No more prefixed fields
-                // Or encountered format string, so no longer accepting prefixed
+            if input.peek(LitStr) {
+                // Encountered format string, so no longer accepting prefixed
                 // fields
                 break;
             }
 
             prefixed_fields.push_value(input.parse()?);
             if let Some(comma) = input.parse::<Option<Token![,]>>()? {
+                if input.is_empty() {
+                    return Err(fail_comma(comma));
+                }
+
                 prefixed_fields.push_punct(comma);
             } else {
                 break;
@@ -305,9 +364,30 @@ impl Parse for Args {
         if let Ok(format_string) = input.parse::<LitStr>() {
             // Start parsing formatting args, if any
             let formatting_args = if !input.is_empty() {
-                input.parse::<Token![,]>()?;
+                let comma = input.parse::<Token![,]>()?;
 
-                Punctuated::parse_separated_nonempty(input)?
+                if input.is_empty() {
+                    return Err(fail_comma(comma));
+                }
+
+                // Prefixes not allowed for normal logging arguments.
+                // This should be intuitive since std::fmt does not allow this
+                // as well.. but could be a relatively common mistake, so just
+                // catch this, just in case.
+                if input.peek(Token![?]) || input.peek(Token![%]) {
+                    return Err(
+                        input.error("prefixes are not allowed as part of the format parameters (only the *structured fields* positioned *before* the format string are allowed to have prefixes).\nThe syntax for the format string and the following format arguments should follow that of the `std::format_args!` macro.")
+                    );
+                }
+
+                // Parse final trailing comma as well (if present), so we can
+                // throw our own error
+                let mut args: ExprFields = Punctuated::parse_terminated(input)?;
+                if let Some(comma) = args.pop_punct() {
+                    return Err(fail_comma(comma));
+                }
+
+                args
             } else {
                 ExprFields::new()
             };
@@ -326,4 +406,8 @@ impl Parse for Args {
             })
         }
     }
+}
+
+fn fail_comma(comma: syn::token::Comma) -> syn::parse::Error {
+    syn::parse::Error::new(comma.span(), "trailing comma not accepted")
 }

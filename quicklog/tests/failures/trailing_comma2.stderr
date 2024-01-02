@@ -1,0 +1,5 @@
+error: trailing comma not accepted
+ --> tests/failures/trailing_comma2.rs:4:44
+  |
+4 |     info!(some_field = 1, another_field = 2,);
+  |                                            ^

@@ -1,4 +1,5 @@
-error: expected an expression
+error: prefixes are not allowed as part of the format parameters (only the *structured fields* positioned *before* the format string are allowed to have prefixes).
+       The syntax for the format string and the following format arguments should follow that of the `std::format_args!` macro.
   --> tests/failures/prefixed_arg_after_fmt_str.rs:12:55
    |
 12 |     info!(a = ?s1, "prefixed arg after fmt str: {b}", ?s1);
