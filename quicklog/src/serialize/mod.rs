@@ -578,39 +578,10 @@ tuple_serialize_each!(A B C D E F G H I J);
 tuple_serialize_each!(A B C D E F G H I J K);
 tuple_serialize_each!(A B C D E F G H I J K L);
 
-/// Eager evaluation into a String for debug structs
-pub fn encode_debug<T: std::fmt::Debug>(val: T, write_buf: &mut [u8]) -> &mut [u8] {
-    let val_string = format!("{:?}", val);
-    let str_len = val_string.len();
-    let remaining = write_buf.len() - SIZE_LENGTH - str_len;
-    let buf_ptr = write_buf.as_mut_ptr();
-
-    // SAFETY: We requested the exact amount required from the queue, so
-    // should not run out of space here.
-    unsafe {
-        buf_ptr.copy_from_nonoverlapping(str_len.to_le_bytes().as_ptr(), SIZE_LENGTH);
-        let s_ptr = buf_ptr.add(SIZE_LENGTH);
-        s_ptr.copy_from_nonoverlapping(val_string.as_bytes().as_ptr(), str_len);
-        std::slice::from_raw_parts_mut(s_ptr.add(str_len), remaining)
-    }
-}
-
-pub fn decode_debug(read_buf: &[u8]) -> (String, &[u8]) {
-    let (len_chunk, rest) = read_buf.split_at(SIZE_LENGTH);
-    let len = usize::from_le_bytes(len_chunk.try_into().unwrap());
-    let (str_chunk, rest) = rest.split_at(len);
-
-    (std::str::from_utf8(str_chunk).unwrap().to_string(), rest)
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::serialize::decode_debug;
     use crate::{self as quicklog};
-    use crate::{
-        serialize::{encode_debug, Serialize},
-        Serialize,
-    };
+    use crate::{serialize::Serialize, Serialize};
     use std::borrow::Cow;
     use std::mem::size_of;
 
@@ -692,22 +663,6 @@ mod tests {
         let _ = s.encode(&mut buf);
 
         decode_and_assert!(s, &buf);
-    }
-
-    #[test]
-    fn serialize_debug() {
-        #[derive(Debug)]
-        #[allow(unused)]
-        struct DebugStruct {
-            s: &'static str,
-        }
-
-        let mut buf = [0; 128];
-        let s = DebugStruct { s: "Hello World" };
-        _ = encode_debug(&s, &mut buf);
-        let (out, _) = decode_debug(&buf);
-
-        assert_eq!(format!("{:?}", s), out,)
     }
 
     #[test]
