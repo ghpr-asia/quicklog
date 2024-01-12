@@ -19,9 +19,9 @@
 //! current `LevelFilter`, use the [`set_max_level`] function. For instance:
 //!
 //! ```rust
-//! use quicklog::level::{set_max_level, LevelFilter};
+//! use quicklog::level::LevelFilter;
 //! use quicklog::queue::FlushError;
-//! use quicklog::{error, flush, info, init};
+//! use quicklog::{error, flush, info, init, set_max_level};
 //!
 //! # fn main() {
 //! init!();
@@ -52,9 +52,9 @@
 //! [`Error`]: crate::level::Level::Error
 //! [`Event`]: crate::level::Level::Event
 //! [`Level`]: crate::level::Level
-//! [`set_max_level`]: crate::level::set_max_level
 //! [`LevelFilter`]: crate::level::LevelFilter
 //! [`LevelFilter::Off`]: crate::level::LevelFilter::Off
+//! [`set_max_level`]: crate::set_max_level
 
 /// Verbosity of a logging event.
 ///
@@ -67,20 +67,27 @@
 /// # Examples
 ///
 /// ```rust
-/// use quicklog::is_level_enabled;
-/// use quicklog::level::{set_max_level, Level, LevelFilter};
+/// use quicklog::level::{Level, LevelFilter};
+/// use quicklog::queue::FlushError;
+/// use quicklog::{debug, flush, info, init, set_max_level, trace, with_flush, NoopFlusher};
 ///
 /// # fn main() {
+/// init!();
+/// with_flush!(NoopFlusher);
 /// assert!(Level::Trace < Level::Debug);
 /// assert!(Level::Error > Level::Info);
 ///
 /// // filter comparison -- determines which logs get recorded at runtime
 /// set_max_level(LevelFilter::Off);
-/// assert!(!is_level_enabled!(Level::Trace));
+/// trace!("This should not be visible");
+/// assert_eq!(flush!(), Err(FlushError::Empty));
 ///
 /// set_max_level(LevelFilter::Info);
-/// assert!(!is_level_enabled!(Level::Debug));
-/// assert!(is_level_enabled!(Level::Info));
+/// debug!("This should not be visible");
+/// assert_eq!(flush!(), Err(FlushError::Empty));
+///
+/// info!("This should be visible");
+/// assert_eq!(flush!(), Ok(()));
 /// # }
 /// ```
 ///
@@ -185,35 +192,6 @@ impl std::str::FromStr for LevelFilter {
             _ => Err(LogLevelParseError),
         }
     }
-}
-
-#[cfg(debug_assertions)]
-static mut MAX_LOG_LEVEL_FILTER: LevelFilter = LevelFilter::Trace;
-
-#[cfg(not(debug_assertions))]
-static mut MAX_LOG_LEVEL_FILTER: LevelFilter = LevelFilter::Info;
-
-/// Modifies the maximum log level that will be logged.
-///
-/// If [`Level`] is greater than or equal to a [`LevelFilter`], then it is
-/// enabled. See the documentation for [`Level`] for more details on what this
-/// means, as well as the [crate documentation](crate#log-filtering) for an
-/// example on how to use this function.
-#[inline]
-pub fn set_max_level(level: LevelFilter) {
-    unsafe {
-        MAX_LOG_LEVEL_FILTER = level;
-    }
-}
-
-/// The currently set [`LevelFilter`]. By default, this is `Trace` in Debug and
-/// `Info` in Release.
-///
-/// Logs with a [`Level`] greater than or equal to the returned [`LevelFilter`]
-/// will be enabled, whereas the rest will be disabled.
-#[inline(always)]
-pub fn max_level() -> LevelFilter {
-    unsafe { MAX_LOG_LEVEL_FILTER }
 }
 
 #[cfg(test)]

@@ -1,6 +1,4 @@
-use quicklog::{
-    debug, error, flush, info, init, level::set_max_level, level::LevelFilter, trace, warn,
-};
+use quicklog::{debug, error, flush, info, init, level::LevelFilter, set_max_level, trace, warn};
 
 // Shows how log records can be filtered out at runtime.
 fn main() {

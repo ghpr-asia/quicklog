@@ -146,7 +146,6 @@ impl Codegen {
             }
         };
         let prologue = quote! {
-            let mut __logger = quicklog::logger();
             let __now = quicklog::Quicklog::now();
             #state
             #(#args_alloc)*
@@ -479,10 +478,10 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
 
     let check = match level {
         Level::Info | Level::Event => quote! {
-            __likely(quicklog::is_level_enabled!(#level))
+            __likely(__logger.is_level_enabled(#level))
         },
         Level::Trace | Level::Debug | Level::Warn | Level::Error => quote! {
-            __unlikely(quicklog::is_level_enabled!(#level))
+            __unlikely(__logger.is_level_enabled(#level))
         },
     };
 
@@ -507,6 +506,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
             b
         }
 
+        let mut __logger = quicklog::logger();
         if #check {
             #log_wrapper
         } else {

@@ -262,7 +262,7 @@
 //!    - By default, the log filter is set to `Trace` in Debug and `Info` in Release. This means that all logs with level `Trace` and above will be logged in Debug, whereas only logs with level `Info` and above will be logged in Release. See the documentation for [`Level`] for more information.
 //!    - To modify this filter at runtime, the [`set_max_level`] function is provided. This allows for more dynamic interleaving of logs, for example:
 //! ```rust no_run
-//! use quicklog::{error, info, init, level::{set_max_level, LevelFilter}};
+//! use quicklog::{error, info, init, level::LevelFilter, set_max_level};
 //!
 //! # fn main() {
 //! init!();
@@ -489,7 +489,7 @@
 //! [`error!`]: crate::error
 //! [`init!`]: crate::init
 //! [`with_flush!`]: crate::with_flush
-//! [`set_max_level`]: crate::level::set_max_level
+//! [`set_max_level`]: crate::set_max_level
 //! [`Level`]: crate::level::Level
 
 /// Macros for logging and modifying the currently used [`Flush`] handlers,
@@ -512,6 +512,7 @@ mod utils;
 use bumpalo::Bump;
 use dyn_fmt::AsStrFormatExt;
 use formatter::{PatternFormatter, QuickLogFormatter};
+use level::{Level, LevelFilter};
 use minstant::Instant;
 use queue::{
     ArgsKind, Consumer, Cursor, FinishState, FlushError, FlushResult, LogArgType, LogHeader,
@@ -557,6 +558,17 @@ pub fn logger() -> &'static mut Quicklog {
     }
 }
 
+/// Modifies the maximum log level that will be logged.
+///
+/// If [`Level`] is greater than or equal to a [`LevelFilter`], then it is
+/// enabled. See the documentation for [`Level`] for more details on what this
+/// means, as well as the [crate documentation](crate#log-filtering) for an
+/// example on how to use this function.
+#[inline(always)]
+pub fn set_max_level(level: LevelFilter) {
+    logger().log_level = level;
+}
+
 pub(crate) struct Clock {
     anchor_time: DateTime<Utc>,
     anchor_instant: Instant,
@@ -580,6 +592,7 @@ impl Default for Clock {
 
 /// Main logging handler.
 pub struct Quicklog {
+    log_level: LevelFilter,
     flusher: Box<dyn Flush>,
     formatter: Box<dyn PatternFormatter>,
     clock: Clock,
@@ -591,8 +604,14 @@ pub struct Quicklog {
 impl Quicklog {
     fn new(logger_capacity: usize) -> Self {
         let (sender, receiver) = Queue::new(logger_capacity);
+        let log_level = if cfg!(debug_assertions) {
+            LevelFilter::Trace
+        } else {
+            LevelFilter::Info
+        };
 
         Quicklog {
+            log_level,
             flusher: Box::new(StdoutFlusher),
             formatter: Box::new(QuickLogFormatter),
             clock: Clock::default(),
@@ -600,6 +619,13 @@ impl Quicklog {
             receiver,
             fmt_buffer: Bump::with_capacity(MAX_FMT_BUFFER_CAPACITY),
         }
+    }
+
+    /// Logs with a [`Level`] greater than or equal to the returned [`LevelFilter`]
+    /// will be enabled, whereas the rest will be disabled.
+    #[inline(always)]
+    pub fn is_level_enabled(&self, level: Level) -> bool {
+        level as usize >= self.log_level as usize
     }
 
     /// Eagerly initializes the global [`Quicklog`] logger.

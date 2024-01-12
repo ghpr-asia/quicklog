@@ -93,15 +93,6 @@ macro_rules! init {
     };
 }
 
-/// Checks if the current level we are trying to log is enabled.
-#[doc(hidden)]
-#[macro_export]
-macro_rules! is_level_enabled {
-    ($level:expr) => {
-        $level as usize >= $crate::level::max_level() as usize
-    };
-}
-
 /// Flushes a single log record onto an implementor of [`Flush`], which can be
 /// modified with [`with_flush!`] macro.
 ///
