@@ -4,7 +4,7 @@ use proc_macro2::{TokenStream as TokenStream2, TokenTree};
 use quote::{quote, ToTokens};
 use syn::{
     parse::{self, discouraged::Speculative, Parse, ParseStream},
-    punctuated::Punctuated,
+    punctuated::{Pair, Punctuated},
     spanned::Spanned,
     Expr, Ident, LitStr, Token,
 };
@@ -392,7 +392,7 @@ impl Parse for Args {
                 // Parse final trailing comma as well (if present), so we can
                 // throw our own error
                 let mut args: ExprFields = Punctuated::parse_terminated(input)?;
-                if let Some(comma) = args.pop_punct() {
+                if let Some(comma) = pop_punct(&mut args) {
                     return Err(fail_comma(comma));
                 }
 
@@ -419,4 +419,17 @@ impl Parse for Args {
 
 fn fail_comma(comma: syn::token::Comma) -> syn::parse::Error {
     syn::parse::Error::new(comma.span(), "trailing comma not accepted")
+}
+
+// Adapted from syn (from 2.0.14 onwards).
+fn pop_punct<T, P>(punctuated: &mut Punctuated<T, P>) -> Option<P> {
+    if punctuated.last().is_some() {
+        return None;
+    }
+
+    let Pair::Punctuated(t, p) = punctuated.pop()? else {
+        return None;
+    };
+    punctuated.push_value(t);
+    Some(p)
 }

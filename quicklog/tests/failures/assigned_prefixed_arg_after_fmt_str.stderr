@@ -1,4 +1,4 @@
-error: expected an expression
+error: expected expression
   --> tests/failures/assigned_prefixed_arg_after_fmt_str.rs:12:59
    |
 12 |     info!(a = ?s1, "prefixed arg after fmt str: {b}", b = ?s1);
