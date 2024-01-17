@@ -2,7 +2,7 @@
 //!
 //! # Usage
 //!
-//! `quicklog` provides an API similar to that of the `log` crate through the five logging macros: [`trace!`], [`debug!`], [`info!`], [`warn!`] and [`error!`].
+//! `quicklog` provides an API similar to that of the `log` crate through the five logging macros: [`trace!`], [`debug!`], [`info!`], [`warn!`] and [`error!`]. Log messages are encoded into a logging queue and decoded from the same queue when the user calls [`flush!`]. Note that messages are currently dropped if this queue is full (see [the below section](#configuration-of-max-logging-capacity) on how to adjust the queue capacity).
 //!
 //! Note that the [`init!`] macro needs to be called to initialize the logger before we can start logging.
 //!
@@ -435,6 +435,10 @@
 //!
 //! ## Configuration of max logging capacity
 //!
+//! As mentioned, log messages will be dropped if they are too big to be written
+//! into the backing logging queue. To avoid this, one might consider increasing
+//! the capacity of the queue.
+//!
 //! The default size used for the backing queue used by `quicklog` is 1MB. To
 //! specify a different size, pass the desired size to the `init!` macro.
 //! ```no_run
@@ -456,6 +460,11 @@
 //! ```
 //!
 //! Note that this size may be rounded up or adjusted for better performance.
+//! `quicklog` does not currently support unbounded logging (i.e. automatically
+//! resizing of logging queue) or blocking when the queue is full. It is
+//! advisable to ensure that either `flush!` is called regularly to avoid
+//! accumulating lots of messages which might saturate the queue, or adjusting
+//! the size of the queue during initialization to a safe limit.
 //!
 //! [`Serialize`]: serialize::Serialize
 //! [`Debug`]: std::fmt::Debug
