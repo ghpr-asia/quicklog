@@ -17,12 +17,12 @@ crossbeam-utils = { version = "0.8.16", default-features = false }
 minstant = "0.1.4"
 
 [dev-dependencies]
-criterion = "0.4.0"
+criterion = { version = "0.4.0", default-features = false }
 delog = "0.1.6"
 lazy_format = "2.0.0"
-tracing = "0.1.37"
+tracing = { version = "0.1.37", default-features = false }
 tracing-appender = "0.2.2"
-tracing-subscriber = "0.3.16"
+tracing-subscriber = { version = "0.3.16", default-features = false }
 recycle-box = { version = "0.2.0"}
 trybuild = "1.0.85"
 
