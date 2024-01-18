@@ -4,6 +4,8 @@ use std::{
     str::from_utf8,
 };
 
+use crate::{queue::ReadResult, utils::try_split_at, ReadError};
+
 /// Allows specification of a custom way to serialize the Struct.
 ///
 /// This is the key trait to implement to improve logging performance. While
@@ -57,8 +59,8 @@ pub trait Serialize {
     /// Describes how to decode the implementing type from a byte buffer.
     ///
     /// Returns a formatted String after parsing the byte buffer, as well as
-    /// the remainder of `read_buf` pass in that was not read.
-    fn decode(read_buf: &[u8]) -> (String, &[u8]);
+    /// the remainder of `read_buf` pass in that Ok(was not read.)
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])>;
     /// The number of bytes required to `encode` the type into a byte buffer.
     #[inline]
     fn buffer_size_required(&self) -> usize
@@ -80,15 +82,15 @@ pub trait Serialize {
 #[doc(hidden)]
 pub trait SerializeTpl: Serialize {
     /// Collects the outputs of [`Serialize::decode`] in an output buffer.
-    fn decode_each<'buf>(read_buf: &'buf [u8], out: &mut Vec<String>) -> &'buf [u8];
+    fn decode_each<'buf>(read_buf: &'buf [u8], out: &mut Vec<String>) -> ReadResult<&'buf [u8]>;
 }
 
 /// Function pointer which decodes a byte buffer back into `String` representation
-pub type DecodeFn = fn(&[u8]) -> (String, &[u8]);
+pub type DecodeFn = fn(&[u8]) -> ReadResult<(String, &[u8])>;
 
 /// Function pointer which decodes a byte buffer and stores the results in an
 /// output buffer.
-pub type DecodeEachFn = for<'buf> fn(&'buf [u8], &mut Vec<String>) -> &'buf [u8];
+pub type DecodeEachFn = for<'buf> fn(&'buf [u8], &mut Vec<String>) -> ReadResult<&'buf [u8]>;
 
 /// Number of bytes it takes to store the size of a type.
 pub(crate) const SIZE_LENGTH: usize = size_of::<usize>();
@@ -110,11 +112,11 @@ macro_rules! gen_serialize {
                 }
             }
 
-            fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-                let (chunk, rest) = read_buf.split_at(size_of::<$primitive>());
-                let x = <$primitive>::from_le_bytes(chunk.try_into().unwrap());
+            fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
+                let (chunk, rest) = try_split_at(read_buf, size_of::<$primitive>())?;
+                let x = <$primitive>::from_le_bytes(chunk.try_into()?);
 
-                (format!("{}", x), rest)
+                Ok((format!("{}", x), rest))
             }
         }
     };
@@ -152,11 +154,11 @@ impl Serialize for bool {
         }
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-        let (chunk, rest) = read_buf.split_at(size_of::<bool>());
-        let x = u8::from_le_bytes(chunk.try_into().unwrap()) != 0;
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
+        let (chunk, rest) = try_split_at(read_buf, size_of::<bool>())?;
+        let x = u8::from_le_bytes(chunk.try_into()?) != 0;
 
-        (format!("{}", x), rest)
+        Ok((format!("{}", x), rest))
     }
 }
 
@@ -175,12 +177,13 @@ impl Serialize for char {
         }
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-        let (chunk, rest) = read_buf.split_at(size_of::<char>());
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
+        let (chunk, rest) = try_split_at(read_buf, size_of::<char>())?;
         // Assuming that we encoded this char
-        let c = char::from_u32(u32::from_le_bytes(chunk.try_into().unwrap())).unwrap();
+        let v = u32::from_le_bytes(chunk.try_into()?);
+        let c = char::from_u32(v).ok_or_else(|| ReadError::unexpected(v.to_string()))?;
 
-        (format!("{}", c), rest)
+        Ok((format!("{}", c), rest))
     }
 }
 
@@ -202,14 +205,15 @@ impl Serialize for &str {
         }
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-        let (len_chunk, chunk) = read_buf.split_at(SIZE_LENGTH);
-        let str_len = usize::from_le_bytes(len_chunk.try_into().unwrap());
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
+        let (len_chunk, chunk) = try_split_at(read_buf, SIZE_LENGTH)?;
+        let str_len = usize::from_le_bytes(len_chunk.try_into()?);
 
-        let (str_chunk, rest) = chunk.split_at(str_len);
-        let s = from_utf8(str_chunk).unwrap();
+        let (str_chunk, rest) = try_split_at(chunk, str_len)?;
+        let s = from_utf8(str_chunk)
+            .map_err(|e| ReadError::unexpected(format!("{}; value: {:?}", e, str_chunk)))?;
 
-        (s.to_string(), rest)
+        Ok((s.to_string(), rest))
     }
 
     #[inline]
@@ -224,7 +228,7 @@ impl Serialize for Cow<'_, str> {
         self.as_ref().encode(write_buf)
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
         <&str as Serialize>::decode(read_buf)
     }
 
@@ -240,7 +244,7 @@ impl Serialize for String {
         self.as_str().encode(write_buf)
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
         <&str as Serialize>::decode(read_buf)
     }
 
@@ -256,7 +260,7 @@ impl<T: Serialize> Serialize for &T {
         (*self).encode(write_buf)
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
         <T as Serialize>::decode(read_buf)
     }
 
@@ -276,7 +280,7 @@ impl<const N: usize, T: Serialize> Serialize for [T; N] {
         write_buf
     }
 
-    fn decode(mut read_buf: &[u8]) -> (String, &[u8]) {
+    fn decode(mut read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
         let decoded = {
             let mut decoded_all: [MaybeUninit<String>; N] =
                 unsafe { MaybeUninit::uninit().assume_init() };
@@ -285,7 +289,7 @@ impl<const N: usize, T: Serialize> Serialize for [T; N] {
             for elem in &mut decoded_all[..] {
                 // TODO(speed): very slow! should revisit whether really want
                 // `decode` to return String.
-                (decoded, read_buf) = T::decode(read_buf);
+                (decoded, read_buf) = T::decode(read_buf)?;
                 elem.write(decoded);
             }
 
@@ -295,7 +299,7 @@ impl<const N: usize, T: Serialize> Serialize for [T; N] {
             decoded_all.map(|x| unsafe { x.assume_init() })
         };
 
-        (format!("{:?}", decoded), read_buf)
+        Ok((format!("{:?}", decoded), read_buf))
     }
 
     #[inline]
@@ -325,20 +329,20 @@ impl<T: Serialize> Serialize for Vec<T> {
         rest
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-        let (len_chunk, mut chunk) = read_buf.split_at(SIZE_LENGTH);
-        let vec_len = usize::from_le_bytes(len_chunk.try_into().unwrap());
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
+        let (len_chunk, mut chunk) = try_split_at(read_buf, SIZE_LENGTH)?;
+        let vec_len = usize::from_le_bytes(len_chunk.try_into()?);
 
         let mut vec = Vec::with_capacity(vec_len);
         let mut decoded;
         for _ in 0..vec_len {
             // TODO(speed): very slow! should revisit whether really want `decode` to return
             // String.
-            (decoded, chunk) = T::decode(chunk);
+            (decoded, chunk) = T::decode(chunk)?;
             vec.push(decoded)
         }
 
-        (format!("{:?}", vec), chunk)
+        Ok((format!("{:?}", vec), chunk))
     }
 
     #[inline]
@@ -353,7 +357,7 @@ impl<T: Serialize> Serialize for Box<T> {
         self.as_ref().encode(write_buf)
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
         <T as Serialize>::decode(read_buf)
     }
 
@@ -388,22 +392,21 @@ impl<T: Serialize> Serialize for Option<T> {
         }
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
         let (tag_chunk, mut chunk) = read_buf.split_at(size_of::<u8>());
-        let tag = u8::from_le_bytes(tag_chunk.try_into().unwrap());
+        let tag = u8::from_le_bytes(tag_chunk.try_into()?);
         let result = match tag {
             1 => {
-                let (value, rest) = <T as Serialize>::decode(chunk);
+                let (value, rest) = <T as Serialize>::decode(chunk)?;
                 chunk = rest;
 
                 format!("Some({})", value)
             }
             2 => "None".to_string(),
-            // TODO: better error handling for `Serialize`, in general
-            _ => panic!("unexpected bytes read"),
+            v => return Err(ReadError::unexpected(v)),
         };
 
-        (result, chunk)
+        Ok((result, chunk))
     }
 
     #[inline]
@@ -446,27 +449,26 @@ impl<T: Serialize, E: Serialize> Serialize for Result<T, E> {
         }
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
         let (tag_chunk, mut chunk) = read_buf.split_at(size_of::<u8>());
-        let tag = u8::from_le_bytes(tag_chunk.try_into().unwrap());
+        let tag = u8::from_le_bytes(tag_chunk.try_into()?);
         let result = match tag {
             1 => {
-                let (value, rest) = <T as Serialize>::decode(chunk);
+                let (value, rest) = <T as Serialize>::decode(chunk)?;
                 chunk = rest;
 
                 format!("Ok({})", value)
             }
             2 => {
-                let (value, rest) = <E as Serialize>::decode(chunk);
+                let (value, rest) = <E as Serialize>::decode(chunk)?;
                 chunk = rest;
 
                 format!("Err({})", value)
             }
-            // TODO: better error handling for `Serialize`, in general
-            _ => panic!("unexpected bytes read"),
+            v => return Err(ReadError::unexpected(v)),
         };
 
-        (result, chunk)
+        Ok((result, chunk))
     }
 
     #[inline]
@@ -518,9 +520,9 @@ macro_rules! tuple_serialize {
             }
 
             #[allow(non_snake_case)]
-            fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-                $(let (ref $name, read_buf) = <$name as Serialize>::decode(read_buf);)*
-                (format!(concat!("(", repeat_fmt!($($name),*), ")"), $($name),*), read_buf)
+            fn decode(read_buf: &[u8]) -> $crate::ReadResult<(String, &[u8])> {
+                $(let (ref $name, read_buf) = <$name as Serialize>::decode(read_buf)?;)*
+                Ok((format!(concat!("(", repeat_fmt!($($name),*), ")"), $($name),*), read_buf))
             }
 
             #[allow(non_snake_case)]
@@ -553,13 +555,13 @@ macro_rules! tuple_serialize_each {
     ($($name:ident)+) => {
         impl<$($name: Serialize),*> SerializeTpl for ($($name,)*) {
             #[allow(non_snake_case)]
-            fn decode_each<'buf>(read_buf: &'buf [u8], out: &mut Vec<String>) -> &'buf [u8] {
+            fn decode_each<'buf>(read_buf: &'buf [u8], out: &mut Vec<String>) -> ReadResult<&'buf [u8]> {
                 $(
-                    let ($name, read_buf) = <$name as Serialize>::decode(read_buf);
+                    let ($name, read_buf) = <$name as Serialize>::decode(read_buf)?;
                     out.push($name);
                  )*
 
-                read_buf
+                Ok(read_buf)
             }
         }
     };
@@ -580,7 +582,7 @@ tuple_serialize_each!(A B C D E F G H I J K L);
 
 #[cfg(test)]
 mod tests {
-    use crate::{self as quicklog};
+    use crate::{self as quicklog, ReadError};
     use crate::{serialize::Serialize, Serialize};
     use std::borrow::Cow;
     use std::mem::size_of;
@@ -593,13 +595,13 @@ mod tests {
 
     macro_rules! decode_and_assert {
         ($decode:expr, $buf:expr) => {{
-            let (out, rest) = get_decode(&$decode)($buf);
+            let (out, rest) = get_decode(&$decode)($buf).unwrap();
             assert_eq!(format!("{}", $decode), out);
             rest
         }};
 
         ($decode:expr, $expected:expr, $buf:expr) => {{
-            let (out, rest) = get_decode(&$decode)($buf);
+            let (out, rest) = get_decode(&$decode)($buf).unwrap();
             assert_eq!($expected, out);
             rest
         }};
@@ -783,5 +785,28 @@ mod tests {
 
         let rest = decode_and_assert!(a, format!("{:?}", a), &buf);
         _ = decode_and_assert!(b, format!("{:?}", b), rest);
+    }
+
+    #[test]
+    fn fail_insufficient_bytes() {
+        let buf = [0_u8; 4];
+        assert_eq!(u64::decode(&buf), Err(ReadError::insufficient_bytes()));
+    }
+
+    #[test]
+    fn fail_wrong_value() {
+        #[derive(Serialize)]
+        #[allow(unused)]
+        enum TestEnum {
+            Foo,
+            Bar,
+        }
+
+        let buf = [2, 0, 0, 0, 0, 0, 0, 0];
+        let err = TestEnum::decode(&buf).unwrap_err();
+        assert_eq!(
+            format!("{}", err),
+            format!("unexpected value encountered when parsing: unknown variant type decoded from buffer: {got}", got = 2)
+        );
     }
 }

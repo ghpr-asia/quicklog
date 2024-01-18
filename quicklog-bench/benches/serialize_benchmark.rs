@@ -1,7 +1,7 @@
 use std::mem::{size_of, MaybeUninit};
 
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
-use quicklog::serialize::Serialize;
+use quicklog::{serialize::Serialize, ReadResult};
 
 mod common;
 
@@ -43,11 +43,11 @@ impl<const N: usize> Serialize for ArrStruct<N> {
         }
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
         let (chunk, rest) = read_buf.split_at(size_of::<u64>() * N);
         let arr: &[u64] = unsafe { std::slice::from_raw_parts(chunk.as_ptr().cast(), N) };
 
-        (format!("ArrStruct {{ arr: {:?} }}", arr), rest)
+        Ok((format!("ArrStruct {{ arr: {:?} }}", arr), rest))
     }
 
     #[inline]

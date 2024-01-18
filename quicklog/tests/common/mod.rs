@@ -2,7 +2,9 @@
 #![allow(dead_code)]
 
 use chrono::{DateTime, Utc};
-use quicklog::{formatter::PatternFormatter, queue::Metadata, serialize::Serialize, Flush};
+use quicklog::{
+    formatter::PatternFormatter, queue::Metadata, serialize::Serialize, Flush, ReadResult,
+};
 
 pub(crate) struct VecFlusher {
     pub(crate) vec: &'static mut Vec<String>,
@@ -71,10 +73,10 @@ impl Serialize for Something {
         self.some_str.encode(write_buf)
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-        let (output, rest) = <&str as Serialize>::decode(read_buf);
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
+        let (output, rest) = <&str as Serialize>::decode(read_buf)?;
 
-        (format!("Something {{ some_str: {} }}", output), rest)
+        Ok((format!("Something {{ some_str: {} }}", output), rest))
     }
 
     #[inline]
@@ -99,7 +101,7 @@ impl Serialize for SerializeStruct {
         self.symbol.as_str().encode(write_buf)
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
         <&str as Serialize>::decode(read_buf)
     }
 
@@ -122,17 +124,17 @@ impl Serialize for BigStruct {
         self.some.encode(write_buf)
     }
 
-    fn decode(buf: &[u8]) -> (String, &[u8]) {
+    fn decode(buf: &[u8]) -> ReadResult<(String, &[u8])> {
         let (mut _head, mut tail) = buf.split_at(0);
         let mut arr = [0; 100];
         let elm_size = std::mem::size_of::<i32>();
         for i in &mut arr {
             (_head, tail) = tail.split_at(elm_size);
-            *i = i32::from_le_bytes(_head.try_into().unwrap());
+            *i = i32::from_le_bytes(_head.try_into()?);
         }
-        let (s, rest) = <&str as Serialize>::decode(tail);
+        let (s, rest) = <&str as Serialize>::decode(tail)?;
 
-        (format!("vec: {:?}, str: {}", arr, s), rest)
+        Ok((format!("vec: {:?}, str: {}", arr, s), rest))
     }
 
     #[inline]

@@ -6,13 +6,13 @@ const fn get_decode<T: quicklog::serialize::Serialize>(_: &T) -> quicklog::seria
 
 macro_rules! decode_and_assert {
     ($decode:expr, $buf:expr) => {{
-        let (out, rest) = $crate::get_decode(&$decode)($buf);
+        let (out, rest) = $crate::get_decode(&$decode)($buf).unwrap();
         assert_eq!(format!("{}", $decode), out);
         rest
     }};
 
     ($decode:expr, $expected:expr, $buf:expr) => {{
-        let (out, rest) = $crate::get_decode(&$decode)($buf);
+        let (out, rest) = $crate::get_decode(&$decode)($buf).unwrap();
         assert_eq!($expected, out);
         rest
     }};

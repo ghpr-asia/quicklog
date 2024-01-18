@@ -1,4 +1,4 @@
-use quicklog::serialize::Serialize;
+use quicklog::{serialize::Serialize, ReadResult};
 
 #[macro_export]
 macro_rules! loop_with_cleanup {
@@ -45,12 +45,12 @@ impl Serialize for BigStruct {
         }
     }
 
-    fn decode(buf: &[u8]) -> (String, &[u8]) {
+    fn decode(buf: &[u8]) -> ReadResult<(String, &[u8])> {
         let (chunk, rest) = buf.split_at(std::mem::size_of::<Self>());
         let bs: &BigStruct =
             unsafe { &*std::mem::transmute::<_, *const BigStruct>(chunk.as_ptr()) };
 
-        (format!("{:?}", bs), rest)
+        Ok((format!("{:?}", bs), rest))
     }
 
     #[inline]
@@ -69,10 +69,10 @@ impl Serialize for Nested {
         self.vec.encode(write_buf)
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-        let (vec, rest) = <Vec<BigStruct> as Serialize>::decode(read_buf);
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
+        let (vec, rest) = <Vec<BigStruct> as Serialize>::decode(read_buf)?;
 
-        (format!("Nested {{ vec: {:?} }}", vec), rest)
+        Ok((format!("Nested {{ vec: {:?} }}", vec), rest))
     }
 
     #[inline]

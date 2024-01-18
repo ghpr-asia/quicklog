@@ -152,7 +152,7 @@ impl Codegen {
             let __size = #get_total_sizes;
             let mut __state = __state.start_write(__size)?;
 
-            let __header = quicklog::queue::LogHeader::new(&__META, __now, #args_kind);
+            let __header = quicklog::queue::LogHeader::new(&__META, __now, #args_kind, __size);
             __state.write(&__header);
         };
 

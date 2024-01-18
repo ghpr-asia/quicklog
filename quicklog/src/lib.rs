@@ -51,7 +51,7 @@
 //!
 //! ## Example
 //! ```rust no_run
-//! use quicklog::{flush, info, init, serialize::Serialize, Serialize};
+//! use quicklog::{flush, info, init, serialize::Serialize, ReadResult, Serialize};
 //!
 //! // derive `Serialize` macro
 //! #[derive(Serialize)]
@@ -73,10 +73,10 @@
 //!         self.s.0.encode(write_buf)
 //!     }
 //!
-//!     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-//!         let (output, rest) = <&str as Serialize>::decode(read_buf);
+//!     fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
+//!         let (output, rest) = <&str as Serialize>::decode(read_buf)?;
 //!
-//!         (format!("Bar {{ s: {} }}", output), rest)
+//!         Ok((format!("Bar {{ s: {} }}", output), rest))
 //!     }
 //!
 //!     #[inline]
@@ -515,17 +515,21 @@ use formatter::{PatternFormatter, QuickLogFormatter};
 use level::{Level, LevelFilter};
 use minstant::Instant;
 use queue::{
-    ArgsKind, Consumer, Cursor, FinishState, FlushError, FlushResult, LogArgType, LogHeader,
-    Prepare, Producer, Queue, QueueError, ReadError, SerializePrepare, WriteFinish, WritePrepare,
+    ArgsKind, Consumer, Cursor, FinishState, FlushError, FlushReprResult, FlushResult, LogArgType,
+    LogHeader, Prepare, Producer, Queue, QueueError, SerializePrepare, WriteFinish, WritePrepare,
     WriteState,
 };
 use serialize::DecodeFn;
 use std::cell::OnceCell;
 
-use crate::formatter::{construct_full_fmt_str, JsonFormatter};
+use crate::{
+    formatter::{construct_full_fmt_str, JsonFormatter},
+    queue::FlushErrorRepr,
+};
 
 pub use chrono::{DateTime, Utc};
 
+pub use queue::{ReadError, ReadResult};
 pub use quicklog_flush::{
     file_flusher::FileFlusher, noop_flusher::NoopFlusher, stdout_flusher::StdoutFlusher, Flush,
 };
@@ -662,54 +666,61 @@ impl Quicklog {
         self.formatter = formatter
     }
 
-    /// Flushes a single log record from the queue.
-    ///
-    /// Iteratively reads through the queue to extract encoded logging
-    /// arguments. This happens by:
-    /// 1. Checking for a [`LogHeader`], which provides information about
-    ///    the number of arguments to expect.
-    /// 2. Parsing header-argument pairs.
-    ///
-    /// In the event of parsing failure, the flushing is terminated without
-    /// committing.
-    pub fn flush(&mut self) -> FlushResult {
+    fn flush_imp(&mut self) -> FlushReprResult {
         let chunk = self
             .receiver
             .prepare_read()
-            .map_err(|_| FlushError::Empty)?;
+            .map_err(|_| FlushErrorRepr::Empty)?;
         let mut cursor = Cursor::new(chunk);
 
         // Parse header for entire log message
-        let log_header = cursor.read::<LogHeader>()?;
+        // Note that if this fails, there is really nothing much we can do
+        // internally.. except propagate the error back to the user to be
+        // handled manually.
+        let log_header = cursor
+            .read::<LogHeader>()
+            .map_err(|e| FlushErrorRepr::read(e, 0))?;
+        let log_size = log_header.log_size;
+
+        let propagate_err = |e: ReadError| FlushErrorRepr::read(e, log_size);
 
         let time = self.clock.compute_datetime(log_header.instant);
         let mut decoded_args = Vec::new();
         match log_header.args_kind {
             ArgsKind::AllSerialize(decode_fn) => {
-                cursor.read_decode_each(decode_fn, &mut decoded_args)?;
+                cursor
+                    .read_decode_each(decode_fn, &mut decoded_args)
+                    .map_err(propagate_err)?;
             }
             ArgsKind::Normal(num_args) => {
                 for _ in 0..num_args {
-                    let arg_type = cursor.read::<LogArgType>()?;
+                    let arg_type = cursor.read::<LogArgType>().map_err(propagate_err)?;
 
                     let decoded = match arg_type {
                         LogArgType::Fmt => {
                             // Remaining: size of argument
-                            let size_of_arg = cursor.read::<usize>()?;
-                            let arg_chunk = cursor.read_bytes(size_of_arg)?;
+                            let size_of_arg = cursor.read::<usize>().map_err(propagate_err)?;
+                            let arg_chunk =
+                                cursor.read_bytes(size_of_arg).map_err(propagate_err)?;
 
                             // Assuming that we wrote this using in-built std::fmt, so should be valid string
                             std::str::from_utf8(arg_chunk)
-                                .map_err(|_| ReadError::UnexpectedValue)?
+                                .map_err(|e| {
+                                    propagate_err(ReadError::unexpected(format!(
+                                        "{}; value: {:?}",
+                                        e, arg_chunk
+                                    )))
+                                })?
                                 .to_string()
                         }
                         LogArgType::Serialize => {
                             // Remaining: size of argument, DecodeFn
-                            let size_of_arg = cursor.read::<usize>()?;
-                            let decode_fn = cursor.read::<DecodeFn>()?;
-                            let arg_chunk = cursor.read_bytes(size_of_arg)?;
+                            let size_of_arg = cursor.read::<usize>().map_err(propagate_err)?;
+                            let decode_fn = cursor.read::<DecodeFn>().map_err(propagate_err)?;
+                            let arg_chunk =
+                                cursor.read_bytes(size_of_arg).map_err(propagate_err)?;
 
-                            let (decoded, _) = decode_fn(arg_chunk);
+                            let (decoded, _) = decode_fn(arg_chunk).map_err(propagate_err)?;
                             decoded
                         }
                     };
@@ -756,6 +767,33 @@ impl Quicklog {
         self.receiver.commit_read();
 
         Ok(())
+    }
+
+    /// Flushes a single log record from the queue.
+    ///
+    /// Iteratively reads through the queue to extract encoded logging
+    /// arguments. This happens by:
+    /// 1. Checking for a [`LogHeader`], which provides information about
+    ///    the number of arguments to expect.
+    /// 2. Parsing header-argument pairs.
+    ///
+    /// In the event of parsing failure, we try to skip over the current log
+    /// (with the presumably correct log size).
+    pub fn flush(&mut self) -> FlushResult {
+        match self.flush_imp() {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                match e {
+                    FlushErrorRepr::Empty => Err(FlushError::Empty),
+                    FlushErrorRepr::Read { err, log_size } => {
+                        // Skip over the log that failed to parse correctly
+                        self.receiver.finish_read(log_size);
+                        self.receiver.commit_read();
+                        Err(err.into())
+                    }
+                }
+            }
+        }
     }
 
     /// Helper function for benchmarks to quickly pretend all logs have been

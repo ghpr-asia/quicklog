@@ -1,21 +1,55 @@
 use std::mem::size_of;
 
-use crate::{level::Level, serialize::DecodeEachFn, Instant};
+use crate::{level::Level, serialize::DecodeEachFn, utils::try_split_at, Instant};
 
 use super::{ChunkRead, ChunkWrite, ReadError, ReadResult};
 
 /// Result from trying to pop from logging queue.
 pub type FlushResult = Result<(), FlushError>;
 
+pub(crate) type FlushReprResult = Result<(), FlushErrorRepr>;
+
 /// Errors that can be presented when flushing.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum FlushError {
     /// Queue is empty.
     Empty,
-    /// Error while parsing arguments due to reaching queue end.
-    InsufficientSpace,
-    /// Encountered parsing/conversion failure for expected types.
-    Decode,
+    Read(ReadError),
+}
+
+impl std::error::Error for FlushError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Empty => None,
+            Self::Read(e) => Some(e as &dyn std::error::Error),
+        }
+    }
+}
+
+impl std::fmt::Display for FlushError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => f.write_str("queue is empty"),
+            Self::Read(_) => f.write_str("unexpected failure when reading from queue"),
+        }
+    }
+}
+
+impl From<ReadError> for FlushError {
+    fn from(value: ReadError) -> Self {
+        Self::Read(value)
+    }
+}
+
+pub(crate) enum FlushErrorRepr {
+    Empty,
+    Read { err: ReadError, log_size: usize },
+}
+
+impl FlushErrorRepr {
+    pub(crate) fn read(err: ReadError, log_size: usize) -> Self {
+        Self::Read { err, log_size }
+    }
 }
 
 /// The type of arguments found in the log record.
@@ -90,14 +124,14 @@ impl TryFrom<usize> for LogArgType {
         match value {
             1 => Ok(LogArgType::Fmt),
             2 => Ok(LogArgType::Serialize),
-            _ => Err(ReadError::UnexpectedValue),
+            v => Err(ReadError::unexpected(v)),
         }
     }
 }
 
 impl ChunkRead for LogArgType {
     fn read(buf: &[u8]) -> ReadResult<Self> {
-        usize::read(buf).unwrap().try_into()
+        usize::read(buf)?.try_into()
     }
 }
 
@@ -111,34 +145,41 @@ pub struct LogHeader<'a> {
     pub(crate) metadata: &'a Metadata,
     pub(crate) instant: Instant,
     pub(crate) args_kind: ArgsKind,
+    pub(crate) log_size: usize,
 }
 
 impl<'a> LogHeader<'a> {
     #[inline]
-    pub fn new(metadata: &'a Metadata, instant: Instant, args_kind: ArgsKind) -> Self {
+    pub fn new(
+        metadata: &'a Metadata,
+        instant: Instant,
+        args_kind: ArgsKind,
+        log_size: usize,
+    ) -> Self {
         Self {
             metadata,
             instant,
             args_kind,
+            log_size,
         }
     }
 }
 
 impl ChunkRead for LogHeader<'_> {
     fn read(buf: &[u8]) -> ReadResult<Self> {
-        let (header_chunk, _) = buf.split_at(<Self as ChunkRead>::bytes_required());
-        let (metadata_chunk, header_rest) = header_chunk.split_at(size_of::<&Metadata>());
-        let (timestamp_chunk, args_kind_chunk) = header_rest.split_at(size_of::<Instant>());
+        let (header_chunk, _) = try_split_at(buf, <Self as ChunkRead>::bytes_required())?;
+        let (metadata_chunk, header_rest) = try_split_at(header_chunk, size_of::<&Metadata>())?;
+        let (timestamp_chunk, header_rest) = try_split_at(header_rest, size_of::<Instant>())?;
+        let (args_kind_chunk, log_size_chunk) = try_split_at(header_rest, size_of::<ArgsKind>())?;
 
-        let metadata: &Metadata = unsafe {
-            &*(usize::from_le_bytes(metadata_chunk.try_into().unwrap()) as *const Metadata)
-        };
-        let instant_bytes: [u8; size_of::<Instant>()] = timestamp_chunk.try_into().unwrap();
+        let metadata: &Metadata =
+            unsafe { &*(usize::from_le_bytes(metadata_chunk.try_into()?) as *const Metadata) };
+        let instant_bytes: [u8; size_of::<Instant>()] = timestamp_chunk.try_into()?;
         let instant: Instant = unsafe { std::mem::transmute(instant_bytes) };
 
         let (args_kind_tag_chunk, args_kind_payload_chunk) =
-            args_kind_chunk.split_at(size_of::<usize>());
-        let args_kind = match usize::from_le_bytes(args_kind_tag_chunk.try_into().unwrap()) {
+            try_split_at(args_kind_chunk, size_of::<usize>())?;
+        let args_kind = match usize::from_le_bytes(args_kind_tag_chunk.try_into()?) {
             1 => {
                 let decode_fn = DecodeEachFn::read(args_kind_payload_chunk)?;
 
@@ -149,13 +190,16 @@ impl ChunkRead for LogHeader<'_> {
 
                 ArgsKind::Normal(num_args)
             }
-            _ => return Err(ReadError::UnexpectedValue),
+            v => return Err(ReadError::unexpected(v)),
         };
+
+        let log_size = usize::from_le_bytes(log_size_chunk.try_into()?);
 
         Ok(LogHeader {
             metadata,
             instant,
             args_kind,
+            log_size,
         })
     }
 }

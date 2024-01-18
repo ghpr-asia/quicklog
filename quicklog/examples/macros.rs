@@ -1,6 +1,6 @@
 use quicklog::{
     debug, error, event, flush, formatter::PatternFormatter, info, init, queue::Metadata,
-    serialize::Serialize, trace, warn, with_formatter,
+    serialize::Serialize, trace, warn, with_formatter, ReadResult,
 };
 
 #[derive(Clone, Debug)]
@@ -19,7 +19,7 @@ impl Serialize for S {
         self.i.encode(write_buf)
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
         i32::decode(read_buf)
     }
 

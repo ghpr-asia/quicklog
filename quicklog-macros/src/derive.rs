@@ -39,14 +39,14 @@ use syn::{
 ///         write_buf = c.encode(tail);
 ///         write_buf
 ///     }
-///     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
-///         let (a, read_buf) = <usize as quicklog::serialize::Serialize>::decode(read_buf);
-///         let (b, read_buf) = <i32 as quicklog::serialize::Serialize>::decode(read_buf);
-///         let (c, read_buf) = <u32 as quicklog::serialize::Serialize>::decode(read_buf);
-///         (
+///     fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
+///         let (a, read_buf) = <usize as quicklog::serialize::Serialize>::decode(read_buf)?;
+///         let (b, read_buf) = <i32 as quicklog::serialize::Serialize>::decode(read_buf)?;
+///         let (c, read_buf) = <u32 as quicklog::serialize::Serialize>::decode(read_buf)?;
+///         Ok((
 ///             format!("TestStruct {{ a: {0}, b: {1}, c: {2} }}", a, b, c),
 ///             read_buf,
-///         )
+///         ))
 ///     }
 ///     #[inline]
 ///     fn buffer_size_required(&self) -> usize {
@@ -95,18 +95,16 @@ use syn::{
 ///         }
 ///         write_buf
 ///     }
-///     fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+///     fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
 ///         let (variant_type, read_buf) = <usize as quicklog::serialize::Serialize>::decode(
 ///             read_buf,
-///         );
-///         let variant_type = variant_type
-///             .parse::<usize>()
-///             .expect(format!("unknown variant type decoded from buffer: {}", variant_type).as_str());
-///         match variant_type {
+///         )?;
+///         let variant_type = variant_type.parse::<usize>()?;
+///         Ok(match variant_type {
 ///             0 => {
 ///                 let (x, read_buf) = <String as quicklog::serialize::Serialize>::decode(
 ///                     read_buf,
-///                 );
+///                 )?;
 ///                 (
 ///                     format!("Foo({0})", x),
 ///                     read_buf,
@@ -115,10 +113,10 @@ use syn::{
 ///             1 => {
 ///                 let (a, read_buf) = <String as quicklog::serialize::Serialize>::decode(
 ///                     read_buf,
-///                 );
+///                 )?;
 ///                 let (b, read_buf) = <usize as quicklog::serialize::Serialize>::decode(
 ///                     read_buf,
-///                 );
+///                 )?;
 ///                 (
 ///                     format!("Bar {{ a: {0}, b: {1} }}", a, b),
 ///                     read_buf,
@@ -127,14 +125,14 @@ use syn::{
 ///             2 => {
 ///                 let (x, read_buf) = <TestStruct as quicklog::serialize::Serialize>::decode(
 ///                     read_buf,
-///                 );
+///                 )?;
 ///                 (
 ///                     format!("Baz({0})", x),
 ///                     read_buf,
 ///                 )
 ///             }
-///             i => unimplemented!("unknown variant type decoded from buffer: {}", i),
-///         }
+///             i => Err(quicklog::ReadError::unexpected(format!("unknown variant type decoded from buffer: {}", i)))
+///         })
 ///     }
 ///     #[inline]
 ///     fn buffer_size_required(&self) -> usize {
@@ -244,12 +242,11 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
             };
             let final_decode = quote! {
                 // Decode variant type from first few bytes
-                let (variant_type, read_buf) = <usize as quicklog::serialize::Serialize>::decode(read_buf);
-                let variant_type = variant_type.parse::<usize>()
-                    .expect(format!("unknown variant type decoded from buffer: {}", variant_type).as_str());
+                let (variant_type, read_buf) = <usize as quicklog::serialize::Serialize>::decode(read_buf)?;
+                let variant_type = variant_type.parse::<usize>()?;
                 match variant_type {
                     #(#variant_decode)*
-                    i => unimplemented!("unknown variant type decoded from buffer: {}", i),
+                    i => Err(quicklog::ReadError::unexpected(format!("unknown variant type decoded from buffer: {}", i)))
                 }
             };
             let final_buf = quote! {
@@ -272,7 +269,7 @@ pub(crate) fn derive(input: TokenStream) -> TokenStream {
                 write_buf
             }
 
-            fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+            fn decode(read_buf: &[u8]) -> quicklog::ReadResult<(String, &[u8])> {
                 #decode
             }
 
@@ -302,7 +299,7 @@ fn gen_serialize_methods(
         return (
             quote! {},
             quote! {
-                (#name.to_string(), read_buf)
+                Ok((#name.to_string(), read_buf))
             },
             quote! { 0 },
         );
@@ -328,14 +325,14 @@ fn gen_serialize_methods(
             }
 
             quote! {
-                let (#name, read_buf) = <#ty as quicklog::serialize::Serialize>::decode(read_buf);
+                let (#name, read_buf) = <#ty as quicklog::serialize::Serialize>::decode(read_buf)?;
             }
         })
         .collect();
     let decode_fmt_str = construct_fmt_str(ident, fields);
     let decode_fmt = quote! {
         #(#decode)*
-        (format!(#decode_fmt_str, #(#field_names),*), read_buf)
+        Ok((format!(#decode_fmt_str, #(#field_names),*), read_buf))
     };
 
     let buffer_size_required = if field_names.is_empty() {

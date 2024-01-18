@@ -3,7 +3,7 @@ use std::mem::size_of;
 use quicklog::formatter::PatternFormatter;
 use quicklog::queue::Metadata;
 use quicklog::serialize::Serialize;
-use quicklog::{flush, info, init, with_formatter, Serialize};
+use quicklog::{flush, info, init, with_formatter, ReadError, ReadResult, Serialize};
 
 /// Struct deriving `Serialize` by using the derive-macro.
 ///
@@ -100,38 +100,44 @@ impl Serialize for ManualSerializeStruct<'_> {
         }
     }
 
-    fn decode(read_buf: &[u8]) -> (String, &[u8]) {
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
         const STR_SZ: usize = size_of::<&str>();
 
-        let (ab_chunk, rest) = read_buf.split_at(STR_SZ + size_of::<usize>());
-        let (a_chunk, b_chunk) = ab_chunk.split_at(STR_SZ);
+        fn try_split_at(buf: &[u8], n: usize) -> ReadResult<(&[u8], &[u8])> {
+            Ok((
+                buf.get(..n).ok_or_else(ReadError::insufficient_bytes)?,
+                buf.get(n..).ok_or_else(ReadError::insufficient_bytes)?,
+            ))
+        }
+
+        let (ab_chunk, rest) = try_split_at(read_buf, STR_SZ + size_of::<usize>())?;
+        let (a_chunk, b_chunk) = try_split_at(ab_chunk, STR_SZ)?;
 
         // Recall that we encoded the **reference** itself, not the entire
         // str slice!
         // Casting an address to a reference is unsafe due to having to ensure
         // alignment and adherence to usual reference semantics (non-dangling,
         // no mutable aliasing).
-        let a: &str =
-            unsafe { std::mem::transmute::<[u8; STR_SZ], &str>((*a_chunk).try_into().unwrap()) };
+        let a: &str = unsafe { std::mem::transmute::<[u8; STR_SZ], &str>((*a_chunk).try_into()?) };
         // Recover `usize`
-        let b = usize::from_le_bytes(b_chunk.try_into().unwrap());
+        let b = usize::from_le_bytes(b_chunk.try_into()?);
 
         // Recover `String`, utilizing the default-provided implementation
-        let (c, rest) = <String as Serialize>::decode(rest);
+        let (c, rest) = <String as Serialize>::decode(rest)?;
 
         // To recover our buffer, we first need to read off how many bytes it
         // originally contained, then restore that many bytes.
-        let (d_len_chunk, rest) = rest.split_at(size_of::<usize>());
-        let d_len = usize::from_le_bytes(d_len_chunk.try_into().unwrap());
-        let (d, rest) = rest.split_at(d_len);
+        let (d_len_chunk, rest) = try_split_at(rest, size_of::<usize>())?;
+        let d_len = usize::from_le_bytes(d_len_chunk.try_into()?);
+        let (d, rest) = try_split_at(rest, d_len)?;
 
-        (
+        Ok((
             format!(
                 "ManualSerializeStruct {{ a: {}, b: {}, c: {}, d: {:?} }}",
                 a, b, c, d
             ),
             rest,
-        )
+        ))
     }
 
     #[inline]

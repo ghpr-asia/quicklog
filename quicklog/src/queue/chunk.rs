@@ -1,16 +1,18 @@
 use std::{
+    array::TryFromSliceError,
     fmt::{Arguments, Write},
     mem::size_of,
+    num::ParseIntError,
 };
 
 use bumpalo::Bump;
 
 use crate::{
     serialize::{DecodeEachFn, DecodeFn, Serialize},
-    utils::{any_as_bytes, unlikely},
+    utils::{any_as_bytes, try_split_at, unlikely},
 };
 
-use super::{FlushError, FmtArgHeader, LogArgType, Producer, QueueError, SerializeArgHeader};
+use super::{FmtArgHeader, LogArgType, Producer, QueueError, SerializeArgHeader};
 
 /// Result from reading from queue.
 pub type ReadResult<T> = Result<T, ReadError>;
@@ -37,22 +39,22 @@ where
 
 impl ChunkRead for usize {
     fn read(buf: &[u8]) -> ReadResult<Self> {
-        let (chunk, _) = buf.split_at(<Self as ChunkRead>::bytes_required());
-        Ok(usize::from_le_bytes(chunk.try_into().unwrap()))
+        let (chunk, _) = try_split_at(buf, <Self as ChunkRead>::bytes_required())?;
+        Ok(usize::from_le_bytes(chunk.try_into()?))
     }
 }
 
 impl ChunkRead for DecodeFn {
     fn read(buf: &[u8]) -> ReadResult<Self> {
-        let (chunk, _) = buf.split_at(<Self as ChunkRead>::bytes_required());
-        Ok(unsafe { std::mem::transmute(usize::from_le_bytes(chunk.try_into().unwrap())) })
+        let (chunk, _) = try_split_at(buf, <Self as ChunkRead>::bytes_required())?;
+        Ok(unsafe { std::mem::transmute(usize::from_le_bytes(chunk.try_into()?)) })
     }
 }
 
 impl ChunkRead for DecodeEachFn {
     fn read(buf: &[u8]) -> ReadResult<Self> {
-        let (chunk, _) = buf.split_at(<Self as ChunkRead>::bytes_required());
-        Ok(unsafe { std::mem::transmute(usize::from_le_bytes(chunk.try_into().unwrap())) })
+        let (chunk, _) = try_split_at(buf, <Self as ChunkRead>::bytes_required())?;
+        Ok(unsafe { std::mem::transmute(usize::from_le_bytes(chunk.try_into()?)) })
     }
 }
 
@@ -108,20 +110,66 @@ impl ChunkWrite for &[u8] {
 }
 
 /// Error reading from the queue.
-#[derive(Copy, Clone, Debug)]
-pub enum ReadError {
-    /// Queue does not have sufficient valid bytes left to read the required
-    /// value.
-    NotEnoughBytes,
-    /// Value parsed from the queue does not match expected value.
-    UnexpectedValue,
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReadError(ReadErrorRepr);
+
+impl std::error::Error for ReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0 as &dyn std::error::Error)
+    }
 }
 
-impl From<ReadError> for FlushError {
-    fn from(value: ReadError) -> Self {
-        match value {
-            ReadError::NotEnoughBytes => Self::InsufficientSpace,
-            ReadError::UnexpectedValue => Self::Decode,
+impl std::fmt::Display for ReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl ReadError {
+    #[inline]
+    pub fn insufficient_bytes() -> Self {
+        Self(ReadErrorRepr::InsufficientBytes)
+    }
+
+    #[inline]
+    pub fn unexpected(got: impl ToString) -> Self {
+        Self(ReadErrorRepr::UnexpectedValue {
+            got: got.to_string(),
+        })
+    }
+}
+
+impl From<TryFromSliceError> for ReadError {
+    fn from(_: TryFromSliceError) -> Self {
+        Self::insufficient_bytes()
+    }
+}
+
+impl From<ParseIntError> for ReadError {
+    fn from(value: ParseIntError) -> Self {
+        Self::unexpected(value.to_string())
+    }
+}
+
+/// Error reading from the queue.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ReadErrorRepr {
+    /// Queue does not have sufficient valid bytes left to read the required
+    /// value.
+    InsufficientBytes,
+    /// Value parsed from the queue does not match expected value.
+    UnexpectedValue { got: String },
+}
+
+impl std::error::Error for ReadErrorRepr {}
+
+impl std::fmt::Display for ReadErrorRepr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InsufficientBytes => f.write_str("not enough bytes to parse this type"),
+            Self::UnexpectedValue { got } => f.write_fmt(format_args!(
+                "unexpected value encountered when parsing: {got}"
+            )),
         }
     }
 }
@@ -163,7 +211,7 @@ where
             &inner[len..]
         };
         if unlikely(buf.len() < required_size) {
-            return Err(ReadError::NotEnoughBytes);
+            return Err(ReadError::insufficient_bytes());
         }
 
         let res = C::read(buf)?;
@@ -181,7 +229,7 @@ where
             &inner[len..]
         };
         if unlikely(buf.len() < n) {
-            return Err(ReadError::NotEnoughBytes);
+            return Err(ReadError::insufficient_bytes());
         }
         let res = unsafe { buf.get_unchecked(..n) };
         self.pos += n;
@@ -199,7 +247,7 @@ where
             let len = self.pos.min(inner.len());
             &inner[len..]
         };
-        let rest = decode_fn(buf, out);
+        let rest = decode_fn(buf, out)?;
         self.pos += buf.len() - rest.len();
 
         Ok(())
