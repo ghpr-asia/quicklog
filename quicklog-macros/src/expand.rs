@@ -152,7 +152,7 @@ impl Codegen {
             let __size = #get_total_sizes;
             let mut __state = __state.start_write(__size)?;
 
-            let __header = quicklog::queue::LogHeader::new(&__META, __now, #args_kind, __size);
+            let __header = quicklog::LogHeader::new(&__META, __now, #args_kind, __size);
             __state.write(&__header);
         };
 
@@ -165,7 +165,7 @@ impl Codegen {
         let json = matches!(level, Level::Event);
         let metadata_write = quote! {
             const __NAMES: &'static [&'static str] = &[#(#structured_names),*];
-            static __META: quicklog::queue::Metadata = quicklog::queue::Metadata::new(
+            static __META: quicklog::Metadata = quicklog::Metadata::new(
                 std::module_path!(),
                 std::file!(),
                 std::line!(),
@@ -197,46 +197,44 @@ impl Codegen {
     /// Computing sizes for requesting buffer slice from the queue.
     fn gen_sizes(all_args: &[LogArg], all_serialize: bool) -> TokenStream2 {
         if all_args.is_empty() {
-            return quote! { quicklog::queue::log_header_size() };
+            return quote! { quicklog::log_header_size() };
         } else if all_serialize {
             let args = all_args.iter().map(|arg| &arg.token);
-            return quote! {  quicklog::queue::log_header_size() + (#(&#args,)*).buffer_size_required() };
+            return quote! {  quicklog::log_header_size() + (#(&#args,)*).buffer_size_required() };
         }
 
-        let arg_sizes = all_args
-            .iter()
-            .map(|arg| {
-                let arg_tok = &arg.token;
-                match arg.ty {
-                    ArgType::Fmt => {
-                        quote! { (quicklog::queue::LogArgType::Fmt, #arg_tok.len()) }
-                    }
-                    ArgType::Serialize => {
-                        quote! { (quicklog::queue::LogArgType::Serialize, #arg_tok.buffer_size_required())}
-                    }
+        let arg_sizes = all_args.iter().map(|arg| {
+            let arg_tok = &arg.token;
+            match arg.ty {
+                ArgType::Fmt => {
+                    quote! { (quicklog::LogArgType::Fmt, #arg_tok.len()) }
                 }
-            });
+                ArgType::Serialize => {
+                    quote! { (quicklog::LogArgType::Serialize, #arg_tok.buffer_size_required())}
+                }
+            }
+        });
 
-        quote! { quicklog::queue::log_size_required(&[#(#arg_sizes),*]) }
+        quote! { quicklog::log_size_required(&[#(#arg_sizes),*]) }
     }
 
     /// Writing to the queue.
     fn gen_write(all_args: &[LogArg], all_serialize: bool) -> (TokenStream2, TokenStream2) {
         if all_args.is_empty() {
-            return (quote! { quicklog::queue::ArgsKind::Normal(0) }, quote! {});
+            return (quote! { quicklog::ArgsKind::Normal(0) }, quote! {});
         } else if all_serialize {
             // Optimized case: all arguments are `Serialize`. We skip writing
             // the argument header
             let args: Vec<&TokenStream2> = all_args.iter().map(|arg| &arg.token).collect();
             let args_kind =
-                quote! { quicklog::queue::ArgsKind::AllSerialize(__decode_fn(&(#(&#args,)*))) };
+                quote! { quicklog::ArgsKind::AllSerialize(__decode_fn(&(#(&#args,)*))) };
             let write = quote! { __state.write(&(#(&#args,)*)); };
 
             return (args_kind, write);
         }
 
         let num_args = all_args.len();
-        let args_kind = quote! { quicklog::queue::ArgsKind::Normal(#num_args) };
+        let args_kind = quote! { quicklog::ArgsKind::Normal(#num_args) };
 
         let write = all_args
             .iter()
@@ -455,7 +453,7 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
 
             #finish
 
-            Ok::<(), quicklog::queue::QueueError>(())
+            Ok::<(), quicklog::QueueError>(())
         }
     };
     let log_wrapper = match level {

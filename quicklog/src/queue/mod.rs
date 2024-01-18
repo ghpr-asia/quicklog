@@ -15,13 +15,15 @@ pub use log::*;
 
 use crossbeam_utils::CachePadded;
 
+/// Error when trying to initiate a queue operation, i.e. obtain chunk for
+/// reading/writing.
 #[derive(Debug, PartialEq, Eq)]
 pub enum QueueError {
     NotEnoughSpace,
 }
 
 /// Single-producer, single-consumer queue.
-pub struct Queue {
+pub(crate) struct Queue {
     _buf: Vec<u8>,
     atomic_writer_pos: CachePadded<AtomicUsize>,
     atomic_reader_pos: CachePadded<AtomicUsize>,
@@ -62,7 +64,7 @@ impl Queue {
 }
 
 /// Writer to a queue.
-pub struct Producer {
+pub(crate) struct Producer {
     queue: Arc<Queue>,
     buf: *mut u8,
     mask: usize,
@@ -115,7 +117,7 @@ impl Producer {
 }
 
 /// Reader of a queue.
-pub struct Consumer {
+pub(crate) struct Consumer {
     queue: Arc<Queue>,
     buf: *const u8,
     mask: usize,
@@ -188,7 +190,7 @@ fn next_power_of_two(n: usize) -> usize {
 mod tests {
     use std::sync::atomic::Ordering;
 
-    use crate::queue::QueueError;
+    use crate::QueueError;
 
     use super::Queue;
 

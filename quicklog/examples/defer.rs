@@ -1,6 +1,6 @@
 use quicklog::{
     commit, commit_on_scope_end, debug_defer, error_defer, flush, info, info_defer, init,
-    queue::FlushError, Serialize,
+    FlushError, Serialize,
 };
 
 #[derive(Debug, PartialEq, Eq)]

@@ -20,7 +20,7 @@
 //!
 //! ```rust
 //! use quicklog::level::LevelFilter;
-//! use quicklog::queue::FlushError;
+//! use quicklog::FlushError;
 //! use quicklog::{error, flush, info, init, set_max_level};
 //!
 //! # fn main() {
@@ -68,8 +68,9 @@
 ///
 /// ```rust
 /// use quicklog::level::{Level, LevelFilter};
-/// use quicklog::queue::FlushError;
-/// use quicklog::{debug, flush, info, init, set_max_level, trace, with_flush, NoopFlusher};
+/// use quicklog::{
+///     debug, flush, info, init, set_max_level, trace, with_flush, FlushError, NoopFlusher,
+/// };
 ///
 /// # fn main() {
 /// init!();

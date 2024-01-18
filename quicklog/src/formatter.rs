@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-use crate::queue::Metadata;
+use crate::Metadata;
 
 /// Customize format output as desired.
 ///
@@ -8,7 +8,7 @@ use crate::queue::Metadata;
 ///
 /// ```no_run
 /// use chrono::{DateTime, Utc};
-/// use quicklog::{formatter::PatternFormatter, init, queue::Metadata, with_formatter};
+/// use quicklog::{formatter::PatternFormatter, init, with_formatter, Metadata};
 ///
 /// struct MyFormatter {
 ///     callsite: &'static str,

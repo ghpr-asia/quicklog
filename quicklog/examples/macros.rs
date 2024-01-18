@@ -1,6 +1,6 @@
 use quicklog::{
-    debug, error, event, flush, formatter::PatternFormatter, info, init, queue::Metadata,
-    serialize::Serialize, trace, warn, with_formatter, ReadResult,
+    debug, error, event, flush, formatter::PatternFormatter, info, init, serialize::Serialize,
+    trace, warn, with_formatter, Metadata, ReadResult,
 };
 
 #[derive(Clone, Debug)]

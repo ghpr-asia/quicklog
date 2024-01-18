@@ -2,9 +2,7 @@
 #![allow(dead_code)]
 
 use chrono::{DateTime, Utc};
-use quicklog::{
-    formatter::PatternFormatter, queue::Metadata, serialize::Serialize, Flush, ReadResult,
-};
+use quicklog::{formatter::PatternFormatter, serialize::Serialize, Flush, Metadata, ReadResult};
 
 pub(crate) struct VecFlusher {
     pub(crate) vec: &'static mut Vec<String>,
@@ -170,7 +168,7 @@ macro_rules! flush_all {
         loop {
             match quicklog::flush!() {
                 Ok(()) => {}
-                Err(quicklog::queue::FlushError::Empty) => break,
+                Err(quicklog::FlushError::Empty) => break,
                 Err(e) => panic!("{:?}", e),
             }
         }
@@ -251,7 +249,7 @@ macro_rules! helper_assert {
 #[macro_export]
 macro_rules! assert_no_messages {
     () => {
-        assert_eq!(quicklog::flush!(), Err(quicklog::queue::FlushError::Empty));
+        assert_eq!(quicklog::flush!(), Err(quicklog::FlushError::Empty));
     };
 }
 

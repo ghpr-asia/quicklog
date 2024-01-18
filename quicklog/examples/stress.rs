@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use quicklog::{flush, info, init, queue::FlushError, with_flush, NoopFlusher};
+use quicklog::{flush, info, init, with_flush, FlushError, NoopFlusher};
 
 #[allow(unused)]
 #[derive(Debug)]

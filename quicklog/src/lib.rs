@@ -213,7 +213,7 @@
 //! #### Example
 //! ```rust no_run
 //! use quicklog::formatter::PatternFormatter;
-//! use quicklog::queue::Metadata;
+//! use quicklog::Metadata;
 //! use quicklog::{DateTime, Utc};
 //! use quicklog::{flush, init, info, with_flush_into_file, with_formatter};
 //!
@@ -473,7 +473,7 @@
 //! [`FileFlusher`]: crate::FileFlusher
 //! [`PatternFormatter`]: crate::formatter::PatternFormatter
 //! [`JsonFormatter`]: crate::formatter::JsonFormatter
-//! [`Metadata`]: crate::queue::Metadata
+//! [`Metadata`]: crate::Metadata
 //! [`event!`]: crate::event
 //! [`commit!`]: crate::commit
 //! [`commit_on_scope_end!`]: crate::commit_on_scope_end
@@ -496,29 +496,25 @@
 /// along with some utilities.
 mod macros;
 
+/// Operations and types involved with writing/reading to the global buffer.
+mod queue;
+
+/// Utility functions.
+mod utils;
+
 /// Formatters for structuring log output.
 pub mod formatter;
 /// Contains logging levels and filters.
 pub mod level;
-/// Operations and types involved with writing/reading to the global buffer.
-pub mod queue;
 /// [`Serialize`] trait for serialization of various data types to aid in
 /// fast logging.
 pub mod serialize;
-
-/// Utility functions.
-mod utils;
 
 use bumpalo::Bump;
 use dyn_fmt::AsStrFormatExt;
 use formatter::{PatternFormatter, QuickLogFormatter};
 use level::{Level, LevelFilter};
 use minstant::Instant;
-use queue::{
-    ArgsKind, Consumer, Cursor, FinishState, FlushError, FlushReprResult, FlushResult, LogArgType,
-    LogHeader, Prepare, Producer, Queue, QueueError, SerializePrepare, WriteFinish, WritePrepare,
-    WriteState,
-};
 use serialize::DecodeFn;
 use std::cell::OnceCell;
 
@@ -529,7 +525,8 @@ use crate::{
 
 pub use chrono::{DateTime, Utc};
 
-pub use queue::{ReadError, ReadResult};
+pub use queue::*;
+
 pub use quicklog_flush::{
     file_flusher::FileFlusher, noop_flusher::NoopFlusher, stdout_flusher::StdoutFlusher, Flush,
 };
