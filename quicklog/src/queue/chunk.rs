@@ -8,7 +8,6 @@ use bumpalo::Bump;
 use crate::{
     serialize::{DecodeEachFn, DecodeFn, Serialize},
     utils::{any_as_bytes, unlikely},
-    BumpString,
 };
 
 use super::{FlushError, FmtArgHeader, LogArgType, Producer, QueueError, SerializeArgHeader};
@@ -352,8 +351,9 @@ impl<'write, P: PrepareState> WriteState<WritePrepare<'write, P>> {
 impl<'write> WriteState<WritePrepare<'write, Prepare<'write>>> {
     /// Allocates a formatted [`bumpalo`] string.
     #[inline]
-    pub fn format_in(&mut self, args: Arguments) -> BumpString<'write> {
-        let mut s = BumpString::with_capacity_in(2048, self.state.prepare.fmt_buffer);
+    pub fn format_in(&mut self, args: Arguments) -> bumpalo::collections::String<'write> {
+        let mut s =
+            bumpalo::collections::String::with_capacity_in(2048, self.state.prepare.fmt_buffer);
         s.write_fmt(args).unwrap();
         s
     }

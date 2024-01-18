@@ -505,8 +505,9 @@ pub mod queue;
 /// [`Serialize`] trait for serialization of various data types to aid in
 /// fast logging.
 pub mod serialize;
+
 /// Utility functions.
-pub mod utils;
+mod utils;
 
 use bumpalo::Bump;
 use dyn_fmt::AsStrFormatExt;
@@ -520,7 +521,7 @@ use queue::{
 use serialize::DecodeFn;
 use std::cell::OnceCell;
 
-pub use ::bumpalo::collections::String as BumpString;
+use crate::formatter::{construct_full_fmt_str, JsonFormatter};
 
 pub use chrono::{DateTime, Utc};
 
@@ -531,8 +532,6 @@ pub use quicklog_macros::{
     debug, debug_defer, error, error_defer, event, event_defer, info, info_defer, trace,
     trace_defer, warn, warn_defer, Serialize,
 };
-
-use crate::formatter::{construct_full_fmt_str, JsonFormatter};
 
 /// Logger initialized to [`Quicklog`].
 #[doc(hidden)]
@@ -834,6 +833,7 @@ impl Quicklog {
 /// It is marked as public since it is used in the codegen for the main logging
 /// macros. However, the code and API can change without warning in any version
 /// update to `quicklog`. It is highly discouraged to rely on this in any form.
+#[doc(hidden)]
 #[inline(never)]
 #[cold]
 pub fn log_wrapper<F: FnOnce() -> Result<(), QueueError>>(f: F) -> Result<(), QueueError> {
