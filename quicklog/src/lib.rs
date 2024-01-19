@@ -645,13 +645,6 @@ impl Quicklog {
         }
     }
 
-    /// Retrieves current timestamp (cycle count) using
-    /// [`Instant`](minstant::Instant).
-    #[inline]
-    pub fn now() -> Instant {
-        Instant::now()
-    }
-
     /// Sets which flusher to be used, used in [`with_flush!`].
     #[doc(hidden)]
     pub fn use_flush(&mut self, flush: Box<dyn Flush>) {
@@ -659,6 +652,7 @@ impl Quicklog {
     }
 
     /// Sets which flusher to be used, used in [`with_formatter!`].
+    #[doc(hidden)]
     pub fn use_formatter(&mut self, formatter: Box<dyn PatternFormatter>) {
         self.formatter = formatter
     }
@@ -770,8 +764,8 @@ impl Quicklog {
     ///
     /// Iteratively reads through the queue to extract encoded logging
     /// arguments. This happens by:
-    /// 1. Checking for a [`LogHeader`], which provides information about
-    ///    the number of arguments to expect.
+    /// 1. Checks for a log header, which provides information about the number
+    /// of arguments to expect.
     /// 2. Parsing header-argument pairs.
     ///
     /// In the event of parsing failure, we try to skip over the current log
@@ -795,6 +789,7 @@ impl Quicklog {
 
     /// Helper function for benchmarks to quickly pretend all logs have been
     /// read and committed.
+    #[doc(hidden)]
     #[cfg(feature = "bench")]
     pub fn flush_noop(&mut self) -> FlushResult {
         let chunk_len = {
@@ -809,14 +804,16 @@ impl Quicklog {
 
         Err(FlushError::Empty)
     }
+}
 
+/// **WARNING: this is not a stable API!**
+/// This piece of code is intended as part of the internal API of `quicklog`.
+/// It is marked as public since it is used in the codegen for the main logging
+/// macros. However, the code and API can change without warning in any version
+/// update to `quicklog`. It is highly discouraged to rely on this in any form.
+#[doc(hidden)]
+impl Quicklog {
     /// Returns data needed in preparation for writing to the queue.
-    ///
-    /// **WARNING: this is not a stable API!**
-    /// This piece of code is intended as part of the internal API of `quicklog`.
-    /// It is marked as public since it is used in the codegen for the main logging
-    /// macros. However, the code and API can change without warning in any version
-    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
     #[inline]
     pub fn prepare_write_serialize(&mut self) -> WriteState<WritePrepare<'_, SerializePrepare>> {
         WriteState {
@@ -828,12 +825,6 @@ impl Quicklog {
     }
 
     /// Returns data needed in preparation for writing to the queue.
-    ///
-    /// **WARNING: this is not a stable API!**
-    /// This piece of code is intended as part of the internal API of `quicklog`.
-    /// It is marked as public since it is used in the codegen for the main logging
-    /// macros. However, the code and API can change without warning in any version
-    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
     #[inline]
     pub fn prepare_write(&mut self) -> WriteState<WritePrepare<'_, Prepare<'_>>> {
         WriteState {
@@ -847,12 +838,6 @@ impl Quicklog {
     }
 
     /// Marks write as complete and commits it for reading.
-    ///
-    /// **WARNING: this is not a stable API!**
-    /// This piece of code is intended as part of the internal API of `quicklog`.
-    /// It is marked as public since it is used in the codegen for the main logging
-    /// macros. However, the code and API can change without warning in any version
-    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
     #[inline]
     pub fn finish_and_commit<F: FinishState>(&mut self, write_state: WriteState<WriteFinish<F>>) {
         self.finish_write(write_state);
@@ -860,12 +845,6 @@ impl Quicklog {
     }
 
     /// Marks write as complete by advancing local writer.
-    ///
-    /// **WARNING: this is not a stable API!**
-    /// This piece of code is intended as part of the internal API of `quicklog`.
-    /// It is marked as public since it is used in the codegen for the main logging
-    /// macros. However, the code and API can change without warning in any version
-    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
     #[inline]
     pub fn finish_write<F: FinishState>(&mut self, write_state: WriteState<WriteFinish<F>>) {
         let n = write_state.state.written;
@@ -874,12 +853,6 @@ impl Quicklog {
     }
 
     /// Commits all uncommitted writes to make slots available for reading.
-    ///
-    /// **WARNING: this is not a stable API!**
-    /// This piece of code is intended as part of the internal API of `quicklog`.
-    /// It is marked as public since it is used in the codegen for the main logging
-    /// macros. However, the code and API can change without warning in any version
-    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
     #[inline]
     pub fn commit_write(&mut self) {
         self.sender.commit_write();
@@ -901,13 +874,29 @@ pub fn log_wrapper<F: FnOnce() -> Result<(), QueueError>>(f: F) -> Result<(), Qu
     f()
 }
 
+/// Retrieves current timestamp (cycle count) using
+/// [`Instant`](minstant::Instant).
+///
+/// **WARNING: this is not a stable API!**
+/// This piece of code is intended as part of the internal API of `quicklog`.
+/// It is marked as public since it is used in the codegen for the main logging
+/// macros. However, the code and API can change without warning in any version
+/// update to `quicklog`. It is highly discouraged to rely on this in any form.
+#[doc(hidden)]
+#[inline]
+pub fn now() -> Instant {
+    Instant::now()
+}
+
+/// Types/functions that are purely used in (support of) macros.
+///
+/// **WARNING: this is not a stable API!**
+/// This piece of code is intended as part of the internal API of `quicklog`.
+/// It is marked as public since it is used in the codegen for the main logging
+/// macros. However, the code and API can change without warning in any version
+/// update to `quicklog`. It is highly discouraged to rely on this in any form.
 #[doc(hidden)]
 pub mod __macro_helpers {
-    /// **WARNING: this is not a stable API!**
-    /// This piece of code is intended as part of the internal API of `quicklog`.
-    /// It is marked as public since it is used in the codegen for the main logging
-    /// macros. However, the code and API can change without warning in any version
-    /// update to `quicklog`. It is highly discouraged to rely on this in any form.
     pub struct CommitOnDrop;
 
     impl Drop for CommitOnDrop {

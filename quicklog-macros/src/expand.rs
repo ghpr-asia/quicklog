@@ -146,7 +146,7 @@ impl Codegen {
             }
         };
         let prologue = quote! {
-            let __now = quicklog::Quicklog::now();
+            let __now = quicklog::now();
             #state
             #(#args_alloc)*
             let __size = #get_total_sizes;

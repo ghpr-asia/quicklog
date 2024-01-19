@@ -103,7 +103,7 @@ fn bench_recycle_box_lazy_format(b: &mut Bencher) {
 }
 
 fn bench_clock(b: &mut Bencher) {
-    b.iter(|| black_box(quicklog::Quicklog::now()))
+    b.iter(|| black_box(quicklog::now()))
 }
 
 fn bench_channel_send(b: &mut Bencher) {
