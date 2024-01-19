@@ -409,11 +409,14 @@ impl std::fmt::Display for ReadError {
 }
 
 impl ReadError {
+    /// Queue does not have sufficient valid bytes left to read the required
+    /// value.
     #[inline]
     pub fn insufficient_bytes() -> Self {
         Self(ReadErrorRepr::InsufficientBytes)
     }
 
+    /// Value parsed from the queue does not match expected value.
     #[inline]
     pub fn unexpected(got: impl ToString) -> Self {
         Self(ReadErrorRepr::UnexpectedValue {

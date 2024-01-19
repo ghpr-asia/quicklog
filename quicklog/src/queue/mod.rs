@@ -19,6 +19,8 @@ use crossbeam_utils::CachePadded;
 /// reading/writing.
 #[derive(Debug, PartialEq, Eq)]
 pub enum QueueError {
+    /// The logging queue does not have enough space to be written into, or does
+    /// not have any data to read.
     NotEnoughSpace,
 }
 

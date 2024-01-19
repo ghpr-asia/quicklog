@@ -203,6 +203,7 @@ pub(crate) type FlushReprResult = Result<(), FlushErrorRepr>;
 pub enum FlushError {
     /// Queue is empty.
     Empty,
+    /// Failure encountered when reading from queue. See also [`ReadError`](crate::ReadError).
     Read(ReadError),
 }
 
