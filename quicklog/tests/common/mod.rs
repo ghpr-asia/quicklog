@@ -1,7 +1,6 @@
 // Some functions only emitted in macros
 #![allow(dead_code)]
 
-use chrono::{DateTime, Utc};
 use quicklog::{formatter::PatternFormatter, serialize::Serialize, Flush, Metadata, ReadResult};
 
 pub(crate) struct VecFlusher {
@@ -25,7 +24,7 @@ pub(crate) struct TestFormatter;
 impl PatternFormatter for TestFormatter {
     fn custom_format(
         &mut self,
-        time: DateTime<Utc>,
+        time: u64,
         metadata: &Metadata,
         _: &[String],
         log_record: &str,

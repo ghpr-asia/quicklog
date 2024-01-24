@@ -158,13 +158,7 @@ impl Serialize for ManualSerializeStruct<'_> {
 pub struct PlainFormatter;
 
 impl PatternFormatter for PlainFormatter {
-    fn custom_format(
-        &mut self,
-        _: chrono::DateTime<chrono::Utc>,
-        _: &Metadata,
-        _: &[String],
-        log_record: &str,
-    ) -> String {
+    fn custom_format(&mut self, _: u64, _: &Metadata, _: &[String], log_record: &str) -> String {
         format!("{}\n", log_record)
     }
 }

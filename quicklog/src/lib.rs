@@ -205,7 +205,7 @@
 //! # fn main() {
 //! let some_struct = S { i: 0 };
 //!
-//! // [2023-11-29T05:05:39.310212084Z][INF]Some data: a=S { i: 0 }
+//! // [1706065336][INF]Some data: a=S { i: 0 }
 //! info!(a = some_struct, "Some data:")
 //! # }
 //! ```
@@ -221,7 +221,7 @@
 //! impl PatternFormatter for PlainFormatter {
 //!     fn custom_format(
 //!         &mut self,
-//!         _: DateTime<chrono::Utc>,
+//!         _: u64,
 //!         _: &Metadata,
 //!         _: &[String],
 //!         log_record: &str,
@@ -303,7 +303,7 @@
 //! init!();
 //! with_json_formatter!();
 //!
-//! // {"timestamp":"2023-11-29T05:05:39.310212084Z","level":"INF","fields":{"message":"hello world, bye world","key1" = "123"}}
+//! // {"timestamp":"1706065336","level":"INF","fields":{"message":"hello world, bye world","key1" = "123"}}
 //! info!(key1 = 123, "hello world, {:?}", "bye world");
 //! # }
 //! ```
@@ -319,11 +319,11 @@
 //! # fn main() {
 //! init!();
 //!
-//! // {"timestamp":"2023-11-29T05:05:39.310212084Z","level":"EVT","fields":{"message":"hello world, bye world","key1" = "123"}}
+//! // {"timestamp":"1706065336","level":"EVT","fields":{"message":"hello world, bye world","key1" = "123"}}
 //! event!(key1 = 123, "hello world, {:?}", "bye world");
 //!
 //! // normal, default format
-//! // [2023-11-29T05:05:39.310212084Z][INF]hello world, bye world key1=123
+//! // [1706065336][INF]hello world, bye world key1=123
 //! info!(key1 = 123, "hello world, {:?}", "bye world");
 //! # }
 //! ```
@@ -514,7 +514,7 @@ use bumpalo::Bump;
 use dyn_fmt::AsStrFormatExt;
 use formatter::{PatternFormatter, QuickLogFormatter};
 use level::{Level, LevelFilter};
-use minstant::Instant;
+use minstant::{Anchor, Instant};
 use serialize::DecodeFn;
 use std::cell::OnceCell;
 
@@ -570,24 +570,14 @@ pub fn set_max_level(level: LevelFilter) {
     logger().log_level = level;
 }
 
+#[derive(Default)]
 pub(crate) struct Clock {
-    anchor_time: DateTime<Utc>,
-    anchor_instant: Instant,
+    anchor: Anchor,
 }
 
 impl Clock {
-    fn compute_datetime(&self, now: Instant) -> DateTime<Utc> {
-        let duration = now - self.anchor_instant;
-        self.anchor_time + duration
-    }
-}
-
-impl Default for Clock {
-    fn default() -> Self {
-        Self {
-            anchor_time: Utc::now(),
-            anchor_instant: Instant::now(),
-        }
+    fn compute_unix_nanos(&self, now: Instant) -> u64 {
+        now.as_unix_nanos(&self.anchor)
     }
 }
 
@@ -675,7 +665,7 @@ impl Quicklog {
 
         let propagate_err = |e: ReadError| FlushErrorRepr::read(e, log_size);
 
-        let time = self.clock.compute_datetime(log_header.instant);
+        let time = self.clock.compute_unix_nanos(log_header.instant);
         let mut decoded_args = Vec::new();
         match log_header.args_kind {
             ArgsKind::AllSerialize(decode_fn) => {

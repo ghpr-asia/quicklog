@@ -1,5 +1,3 @@
-use chrono::{DateTime, Utc};
-
 use crate::Metadata;
 
 /// Customize format output as desired.
@@ -17,7 +15,7 @@ use crate::Metadata;
 /// impl PatternFormatter for MyFormatter {
 ///     fn custom_format(
 ///         &mut self,
-///         time: DateTime<Utc>,
+///         time: u64,
 ///         metadata: &Metadata,
 ///         _: &[String],
 ///         log_record: &str,
@@ -43,7 +41,7 @@ pub trait PatternFormatter {
     /// and other metadata.
     fn custom_format(
         &mut self,
-        time: DateTime<Utc>,
+        time: u64,
         metadata: &Metadata,
         field_args: &[String],
         log_record: &str,
@@ -68,17 +66,12 @@ pub struct QuickLogFormatter;
 impl PatternFormatter for QuickLogFormatter {
     fn custom_format(
         &mut self,
-        time: DateTime<Utc>,
+        time: u64,
         metadata: &Metadata,
         _: &[String],
         log_record: &str,
     ) -> String {
-        format!(
-            "[{}][{}]{}\n",
-            time.format("%FT%H:%M:%S%.9f%z"),
-            metadata.level,
-            log_record
-        )
+        format!("[{}][{}]{}\n", time, metadata.level, log_record)
     }
 }
 
@@ -92,7 +85,7 @@ impl PatternFormatter for QuickLogFormatter {
 /// init!();
 /// with_formatter!(JsonFormatter);
 ///
-/// // {"timestamp":"2023-12-13T03:01:14.131540000+0000","level":"INF","fields":{"message":"some message: 5","hello": "123","world":"there"}}
+/// // {"timestamp":"1706065336","level":"INF","fields":{"message":"some message: 5","hello": "123","world":"there"}}
 /// info!(hello = "123", world = "there", "some message: {}", 5);
 /// # }
 /// ```
@@ -101,15 +94,14 @@ pub struct JsonFormatter;
 impl PatternFormatter for JsonFormatter {
     fn custom_format(
         &mut self,
-        time: DateTime<Utc>,
+        time: u64,
         metadata: &Metadata,
         fields_args: &[String],
         log_record: &str,
     ) -> String {
         let mut final_str = format!(
             "{{\"timestamp\":\"{}\",\"level\":\"{}\"",
-            time.format("%FT%H:%M:%S%.9f%z"),
-            metadata.level
+            time, metadata.level
         );
 
         let log_empty = log_record.is_empty();

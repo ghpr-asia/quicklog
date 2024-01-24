@@ -34,7 +34,7 @@ struct CustomFormatter;
 impl PatternFormatter for CustomFormatter {
     fn custom_format(
         &mut self,
-        time: chrono::DateTime<chrono::Utc>,
+        time: u64,
         metadata: &Metadata,
         _: &[String],
         log_record: &str,
