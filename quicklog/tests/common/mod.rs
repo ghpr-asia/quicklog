@@ -283,3 +283,18 @@ macro_rules! assert_message_equal {
 macro_rules! assert_message_with_level_equal {
     ($f:expr, $format_string:expr) => { helper_assert!(@ $f, $format_string, common::message_and_level_from_log_line) };
 }
+
+#[macro_export]
+macro_rules! first_field_from_log_line {
+    () => {{
+        let line = unsafe { common::from_log_lines(&VEC, |s| s.to_string()) };
+        unsafe {
+            _ = VEC.clear();
+        }
+        let end_bracket_idx = line[0].find(']').unwrap();
+        line.get(0)
+            .and_then(|l| l.get(1..end_bracket_idx))
+            .unwrap()
+            .to_string()
+    }};
+}

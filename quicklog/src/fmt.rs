@@ -342,6 +342,33 @@ struct Timestamp<Tz> {
     display_timestamp: bool,
 }
 
+impl<Tz: TimeZone> Timestamp<Tz>
+where
+    Tz::Offset: std::fmt::Display,
+{
+    fn format_timestamp<'a>(
+        &self,
+        timestamp: u64,
+    ) -> Result<Option<DelayedFormat<StrftimeItems<'a>>>, std::fmt::Error> {
+        if !self.display_timestamp {
+            return Ok(None);
+        };
+
+        let TimestampImp {
+            format: TimestampFormat(format),
+            tz,
+        } = &self.inner;
+
+        let secs = timestamp / 1_000_000_000;
+        let nsecs = timestamp - secs * 1_000_000_000;
+        let dt = DateTime::from_timestamp(secs as i64, nsecs as u32)
+            .ok_or(std::fmt::Error)?
+            .with_timezone(tz);
+
+        Ok(Some(dt.format(format)))
+    }
+}
+
 impl Default for Timestamp<Utc> {
     fn default() -> Self {
         Self {
@@ -371,33 +398,6 @@ struct TimestampFormat(&'static str);
 impl Default for TimestampFormat {
     fn default() -> Self {
         Self("%s")
-    }
-}
-
-impl<Tz: TimeZone> Timestamp<Tz>
-where
-    Tz::Offset: std::fmt::Display,
-{
-    fn format_timestamp<'a>(
-        &self,
-        timestamp: u64,
-    ) -> Result<Option<DelayedFormat<StrftimeItems<'a>>>, std::fmt::Error> {
-        if !self.display_timestamp {
-            return Ok(None);
-        };
-
-        let TimestampImp {
-            format: TimestampFormat(format),
-            tz,
-        } = &self.inner;
-
-        let secs = timestamp / 1_000_000_000;
-        let nsecs = timestamp - secs * 1_000_000_000;
-        let dt = DateTime::from_timestamp(secs as i64, nsecs as u32)
-            .ok_or(std::fmt::Error)?
-            .with_timezone(tz);
-
-        Ok(Some(dt.format(format)))
     }
 }
 
@@ -758,4 +758,25 @@ where
 #[inline]
 pub fn formatter() -> FormatterBuilder<Normal, Utc> {
     FormatterBuilder::default()
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::Timestamp;
+
+    #[test]
+    fn default_timestamp_fmt() {
+        let ts = Timestamp::default();
+        let now = Utc::now()
+            .timestamp_nanos_opt()
+            .expect("unable to get current time");
+        let formatted = ts
+            .format_timestamp(now as u64)
+            .expect("failed to format timestamp")
+            .expect("display timestamp not enabled by default");
+
+        assert_eq!(format!("{}", formatted), (now / 1_000_000_000).to_string());
+    }
 }
