@@ -10,7 +10,7 @@ macro_rules! with_flush {
     }};
 }
 
-/// Used to amend which [`PatternFormatter`](crate::formatter::PatternFormatter)
+/// Used to amend which [`PatternFormatter`](crate::fmt::PatternFormatter)
 /// implementor is currently attached to the global
 /// [`Quicklog`](crate::Quicklog) logger.
 ///

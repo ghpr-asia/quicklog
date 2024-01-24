@@ -164,7 +164,7 @@ impl std::fmt::Write for Writer {
 /// ```no_run
 /// use chrono::{DateTime, Utc};
 /// use quicklog::{
-///     formatter::{LogContext, PatternFormatter, Writer},
+///     fmt::{LogContext, PatternFormatter, Writer},
 ///     init, with_formatter, Metadata,
 /// };
 ///

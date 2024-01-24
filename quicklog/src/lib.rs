@@ -212,7 +212,7 @@
 //!
 //! #### Example
 //! ```rust no_run
-//! use quicklog::formatter::{LogContext, PatternFormatter, Writer};
+//! use quicklog::fmt::{LogContext, PatternFormatter, Writer};
 //! use quicklog::Metadata;
 //! use quicklog::{DateTime, Utc};
 //! use quicklog::{flush, init, info, with_flush_into_file, with_formatter};
@@ -482,13 +482,13 @@
 //! [`Display`]: std::fmt::Display
 //! [`StdoutFlusher`]: crate::StdoutFlusher
 //! [`FileFlusher`]: crate::FileFlusher
-//! [`PatternFormatter`]: crate::formatter::PatternFormatter
-//! [`FormatterBuilder`]: crate::formatter::FormatterBuilder
-//! [`JsonFormatter`]: crate::formatter::JsonFormatter
+//! [`PatternFormatter`]: crate::fmt::PatternFormatter
+//! [`FormatterBuilder`]: crate::fmt::FormatterBuilder
+//! [`JsonFormatter`]: crate::fmt::JsonFormatter
 //! [`Metadata`]: crate::Metadata
 //! [`event!`]: crate::event
 //! [`commit!`]: crate::commit
-//! [`format!`]: crate::formatter::format
+//! [`format!`]: crate::fmt::format
 //! [`commit_on_scope_end!`]: crate::commit_on_scope_end
 //! [`trace_defer!`]: crate::trace_defer
 //! [`debug_defer!`]: crate::debug_defer
@@ -516,7 +516,7 @@ mod queue;
 mod utils;
 
 /// Formatters for structuring log output.
-pub mod formatter;
+pub mod fmt;
 /// Contains logging levels and filters.
 pub mod level;
 /// [`Serialize`] trait for serialization of various data types to aid in
@@ -524,7 +524,7 @@ pub mod level;
 pub mod serialize;
 
 use bumpalo::Bump;
-use formatter::{FormatterBuilder, JsonFormatter, PatternFormatter, Writer};
+use fmt::{FormatterBuilder, JsonFormatter, LogContext, PatternFormatter, Writer};
 use level::{Level, LevelFilter};
 use minstant::{Anchor, Instant};
 use serialize::DecodeFn;
@@ -534,7 +534,7 @@ use crate::queue::FlushErrorRepr;
 
 pub use chrono::{DateTime, Utc};
 
-pub use formatter::formatter;
+pub use fmt::formatter;
 pub use queue::*;
 
 pub use quicklog_flush::{
@@ -544,8 +544,6 @@ pub use quicklog_macros::{
     debug, debug_defer, error, error_defer, event, event_defer, info, info_defer, trace,
     trace_defer, warn, warn_defer, Serialize,
 };
-
-use crate::formatter::LogContext;
 
 /// Logger initialized to [`Quicklog`].
 #[doc(hidden)]

@@ -4,7 +4,7 @@
 use std::fmt::Write;
 
 use quicklog::{
-    formatter::{LogContext, PatternFormatter, Writer},
+    fmt::{LogContext, PatternFormatter, Writer},
     serialize::Serialize,
     Flush, ReadResult,
 };
