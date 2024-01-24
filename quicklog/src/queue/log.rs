@@ -203,6 +203,8 @@ pub(crate) type FlushReprResult = Result<(), FlushErrorRepr>;
 pub enum FlushError {
     /// Queue is empty.
     Empty,
+    /// Failed to properly format log output.
+    Formatting,
     /// Failure encountered when reading from queue. See also [`ReadError`](crate::ReadError).
     Read(ReadError),
 }
@@ -211,6 +213,7 @@ impl std::error::Error for FlushError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Empty => None,
+            Self::Formatting => None,
             Self::Read(e) => Some(e as &dyn std::error::Error),
         }
     }
@@ -220,8 +223,15 @@ impl std::fmt::Display for FlushError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Empty => f.write_str("queue is empty"),
+            Self::Formatting => f.write_str("failed to format proper log output"),
             Self::Read(_) => f.write_str("unexpected failure when reading from queue"),
         }
+    }
+}
+
+impl From<std::fmt::Error> for FlushError {
+    fn from(_: std::fmt::Error) -> Self {
+        Self::Formatting
     }
 }
 
@@ -233,12 +243,19 @@ impl From<ReadError> for FlushError {
 
 pub(crate) enum FlushErrorRepr {
     Empty,
+    Formatting,
     Read { err: ReadError, log_size: usize },
 }
 
 impl FlushErrorRepr {
     pub(crate) fn read(err: ReadError, log_size: usize) -> Self {
         Self::Read { err, log_size }
+    }
+}
+
+impl From<std::fmt::Error> for FlushErrorRepr {
+    fn from(_: std::fmt::Error) -> Self {
+        Self::Formatting
     }
 }
 
@@ -251,7 +268,6 @@ pub struct Metadata {
     pub level: Level,
     pub format_str: &'static str,
     pub fields: &'static [&'static str],
-    pub json: bool,
 }
 
 impl Metadata {
@@ -263,7 +279,6 @@ impl Metadata {
         level: Level,
         format_str: &'static str,
         fields: &'static [&'static str],
-        json: bool,
     ) -> Self {
         Self {
             module_path,
@@ -272,7 +287,6 @@ impl Metadata {
             level,
             format_str,
             fields,
-            json,
         }
     }
 }

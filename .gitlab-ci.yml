@@ -8,6 +8,7 @@ include:
 variables:
   # can parallelize if we have multiple applications using `matrix`
   APP: default
+  CARGO_FEATURES: --all-features
   # artifact path - will be cached between builds
   RUSTC_WRAPPER: /opt/bin/sccache
   SCCACHE_SERVER_PORT: "4226"

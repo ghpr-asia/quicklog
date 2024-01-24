@@ -24,7 +24,7 @@ quicklog = "0.3"
 One of the goals of `quicklog` is to provide basic logging functionality similar to `log` or `tracing`'s API. The five core logging macros are supported: `trace!`, `debug!`, `info!`, `warn!` and `error!`. [Structured logging](https://docs.rs/tracing/latest/tracing/#recording-fields) and [named parameters](https://doc.rust-lang.org/std/fmt/#named-parameters) are also supported:
 
 ```rust
-use quicklog::{info, init, debug, error};
+use quicklog::{info, init};
 
 fn main() {
     // initialize required resources. by default, all logs are

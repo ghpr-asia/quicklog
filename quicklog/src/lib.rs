@@ -212,7 +212,7 @@
 //!
 //! #### Example
 //! ```rust no_run
-//! use quicklog::formatter::PatternFormatter;
+//! use quicklog::formatter::{LogContext, PatternFormatter, Writer};
 //! use quicklog::Metadata;
 //! use quicklog::{DateTime, Utc};
 //! use quicklog::{flush, init, info, with_flush_into_file, with_formatter};
@@ -220,13 +220,12 @@
 //! pub struct PlainFormatter;
 //! impl PatternFormatter for PlainFormatter {
 //!     fn custom_format(
-//!         &mut self,
-//!         _: u64,
-//!         _: &Metadata,
-//!         _: &[String],
-//!         log_record: &str,
-//!     ) -> String {
-//!         format!("{}\n", log_record)
+//!         &self,
+//!         ctx: LogContext<'_>,
+//!         writer: &mut Writer,
+//!     ) -> std::fmt::Result {
+//!         use std::fmt::Write;
+//!         writeln!(writer, "{}", ctx.full_message())
 //!     }
 //! }
 //!
@@ -240,7 +239,11 @@
 //! _ = flush!();
 //!
 //! // change log output format according to `PlainFormatter`
+//! // note that we can achieve the same effect with
+//! // `formatter().without_time().with_level(false).init()` instead of defining
+//! // this new `PlainFormatter`
 //! with_formatter!(PlainFormatter);
+//!
 //! // flush into a file path specified
 //! with_flush_into_file!("logs/my_log.log");
 //!
@@ -292,16 +295,17 @@
 //!
 //! There are two ways to use built-in JSON logging:
 //!
-//! 1. `with_json_formatter!` macro to set [`JsonFormatter`] as the global default.
+//! 1. Setup the default formatter using [`formatter()`] to use JSON representation:
 //!
 //! ### Example
 //!
 //! ```rust no_run
-//! use quicklog::{info, init, with_json_formatter};
+//! use quicklog::{formatter, info, init};
 //!
 //! # fn main() {
 //! init!();
-//! with_json_formatter!();
+//! // use JSON formatting
+//! formatter().json().init();
 //!
 //! // {"timestamp":"1706065336","level":"INF","fields":{"message":"hello world, bye world","key1" = "123"}}
 //! info!(key1 = 123, "hello world, {:?}", "bye world");
@@ -466,16 +470,25 @@
 //! accumulating lots of messages which might saturate the queue, or adjusting
 //! the size of the queue during initialization to a safe limit.
 //!
+//! # Feature Flags
+//!
+//! The following feature flag(s) are available:
+//!
+//! - `ansi`: enables ANSI colors and formatting. When enabled, will toggle on ANSI colors in the
+//! default formatter. See [`FormatterBuilder`] for configuration options. Disabled by default.
+//!
 //! [`Serialize`]: serialize::Serialize
 //! [`Debug`]: std::fmt::Debug
 //! [`Display`]: std::fmt::Display
 //! [`StdoutFlusher`]: crate::StdoutFlusher
 //! [`FileFlusher`]: crate::FileFlusher
 //! [`PatternFormatter`]: crate::formatter::PatternFormatter
+//! [`FormatterBuilder`]: crate::formatter::FormatterBuilder
 //! [`JsonFormatter`]: crate::formatter::JsonFormatter
 //! [`Metadata`]: crate::Metadata
 //! [`event!`]: crate::event
 //! [`commit!`]: crate::commit
+//! [`format!`]: crate::formatter::format
 //! [`commit_on_scope_end!`]: crate::commit_on_scope_end
 //! [`trace_defer!`]: crate::trace_defer
 //! [`debug_defer!`]: crate::debug_defer
@@ -511,20 +524,17 @@ pub mod level;
 pub mod serialize;
 
 use bumpalo::Bump;
-use dyn_fmt::AsStrFormatExt;
-use formatter::{PatternFormatter, QuickLogFormatter};
+use formatter::{FormatterBuilder, JsonFormatter, PatternFormatter, Writer};
 use level::{Level, LevelFilter};
 use minstant::{Anchor, Instant};
 use serialize::DecodeFn;
 use std::cell::OnceCell;
 
-use crate::{
-    formatter::{construct_full_fmt_str, JsonFormatter},
-    queue::FlushErrorRepr,
-};
+use crate::queue::FlushErrorRepr;
 
 pub use chrono::{DateTime, Utc};
 
+pub use formatter::formatter;
 pub use queue::*;
 
 pub use quicklog_flush::{
@@ -534,6 +544,8 @@ pub use quicklog_macros::{
     debug, debug_defer, error, error_defer, event, event_defer, info, info_defer, trace,
     trace_defer, warn, warn_defer, Serialize,
 };
+
+use crate::formatter::LogContext;
 
 /// Logger initialized to [`Quicklog`].
 #[doc(hidden)]
@@ -583,8 +595,8 @@ impl Clock {
 
 /// Main logging handler.
 pub struct Quicklog {
+    writer: Writer,
     log_level: LevelFilter,
-    flusher: Box<dyn Flush>,
     formatter: Box<dyn PatternFormatter>,
     clock: Clock,
     sender: Producer,
@@ -602,9 +614,9 @@ impl Quicklog {
         };
 
         Quicklog {
+            writer: Writer::default(),
             log_level,
-            flusher: Box::new(StdoutFlusher),
-            formatter: Box::new(QuickLogFormatter),
+            formatter: Box::new(FormatterBuilder::default().build()),
             clock: Clock::default(),
             sender,
             receiver,
@@ -638,13 +650,13 @@ impl Quicklog {
     /// Sets which flusher to be used, used in [`with_flush!`].
     #[doc(hidden)]
     pub fn use_flush(&mut self, flush: Box<dyn Flush>) {
-        self.flusher = flush
+        self.writer.with_flusher(flush);
     }
 
     /// Sets which flusher to be used, used in [`with_formatter!`].
     #[doc(hidden)]
     pub fn use_formatter(&mut self, formatter: Box<dyn PatternFormatter>) {
-        self.formatter = formatter
+        self.formatter = formatter;
     }
 
     fn flush_imp(&mut self) -> FlushReprResult {
@@ -710,38 +722,19 @@ impl Quicklog {
             }
         }
 
-        let num_field_args = log_header.metadata.fields.len();
-        debug_assert!(decoded_args.len() >= num_field_args);
-        let end_idx = num_field_args.min(decoded_args.len());
-        let field_start_idx = decoded_args.len() - end_idx;
-        let field_args = &decoded_args[field_start_idx..];
-
-        let log_line = if log_header.metadata.json {
-            // Override global formatter
-            let formatted = log_header
-                .metadata
-                .format_str
-                .format(&decoded_args[..field_start_idx]);
-
-            JsonFormatter.custom_format(time, log_header.metadata, field_args, &formatted)
+        let log_ctx = LogContext::new(time, log_header.metadata, &decoded_args);
+        let fmt_res = if matches!(log_ctx.metadata.level, Level::Event) {
+            JsonFormatter::default().custom_format(log_ctx, &mut self.writer)
         } else {
-            let formatted = if self.formatter.include_structured_fields() {
-                let fmt_str = construct_full_fmt_str(
-                    log_header.metadata.format_str,
-                    log_header.metadata.fields,
-                );
-                fmt_str.format(&decoded_args)
-            } else {
-                log_header
-                    .metadata
-                    .format_str
-                    .format(&decoded_args[..field_start_idx])
-            };
-
-            self.formatter
-                .custom_format(time, log_header.metadata, field_args, &formatted)
+            self.formatter.custom_format(log_ctx, &mut self.writer)
         };
-        self.flusher.flush_one(log_line);
+        match fmt_res {
+            Ok(()) => self.writer.flush(),
+            Err(e) => {
+                self.writer.clear();
+                return Err(e.into());
+            }
+        }
 
         let read = cursor.finish();
         self.receiver.finish_read(read);
@@ -766,6 +759,7 @@ impl Quicklog {
             Err(e) => {
                 match e {
                     FlushErrorRepr::Empty => Err(FlushError::Empty),
+                    FlushErrorRepr::Formatting => Err(FlushError::Formatting),
                     FlushErrorRepr::Read { err, log_size } => {
                         // Skip over the log that failed to parse correctly
                         self.receiver.finish_read(log_size);

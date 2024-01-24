@@ -1,8 +1,7 @@
 use std::mem::size_of;
 
-use quicklog::formatter::PatternFormatter;
 use quicklog::serialize::Serialize;
-use quicklog::{flush, info, init, with_formatter, Metadata, ReadError, ReadResult, Serialize};
+use quicklog::{flush, formatter, info, init, ReadError, ReadResult, Serialize};
 
 /// Struct deriving `Serialize` by using the derive-macro.
 ///
@@ -153,19 +152,11 @@ impl Serialize for ManualSerializeStruct<'_> {
     }
 }
 
-/// The default `QuickLogFormatter` outputs the timestamp as well. For this
-/// example, to keep things simple, we just return the plain decoded string.
-pub struct PlainFormatter;
-
-impl PatternFormatter for PlainFormatter {
-    fn custom_format(&mut self, _: u64, _: &Metadata, _: &[String], log_record: &str) -> String {
-        format!("{}\n", log_record)
-    }
-}
-
 fn main() {
     init!();
-    with_formatter!(PlainFormatter);
+    // The default `QuickLogFormatter` outputs the timestamp as well. For this
+    // example, to keep things simple, we just return the plain decoded string.
+    formatter().without_time().with_level(false).init();
 
     let derive = SerializeStruct { a: 1, b: -2, c: 3 };
     let manual = ManualSerializeStruct {

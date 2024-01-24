@@ -56,6 +56,9 @@
 //! [`LevelFilter::Off`]: crate::level::LevelFilter::Off
 //! [`set_max_level`]: crate::set_max_level
 
+#[cfg(feature = "ansi")]
+use nu_ansi_term::{Color, Style};
+
 /// Verbosity of a logging event.
 ///
 /// Note that `Trace` is considered to have the lowest level, and
@@ -110,17 +113,22 @@ pub enum Level {
     Event = 5,
 }
 
-impl std::fmt::Display for Level {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let level = match self {
+impl Level {
+    fn name(&self) -> &'static str {
+        match self {
             Self::Trace => "TRC",
             Self::Debug => "DBG",
             Self::Info => "INF",
             Self::Warn => "WRN",
             Self::Error => "ERR",
             Self::Event => "EVT",
-        };
-        write!(f, "{}", level)
+        }
+    }
+}
+
+impl std::fmt::Display for Level {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
     }
 }
 
@@ -132,6 +140,51 @@ impl std::fmt::Debug for Level {
 
 /// `LevelFilter` represents the different [`Level`]s of logging we have,
 /// with the addition of `Off`, which will disable all logging (at runtime).
+#[derive(Clone, Copy, Eq, PartialEq, PartialOrd)]
+pub(crate) struct LevelFormat {
+    level: Level,
+    #[cfg(feature = "ansi")]
+    ansi: bool,
+}
+
+impl LevelFormat {
+    #[cfg(feature = "ansi")]
+    pub(crate) fn new(level: Level, ansi: bool) -> Self {
+        Self { level, ansi }
+    }
+
+    #[cfg(not(feature = "ansi"))]
+    pub(crate) fn new(level: Level) -> Self {
+        Self { level }
+    }
+}
+
+impl std::fmt::Display for LevelFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        #[cfg(feature = "ansi")]
+        {
+            if self.ansi {
+                let name = self.level.name();
+                let color = match self.level {
+                    Level::Trace => Color::Purple,
+                    Level::Debug => Color::Blue,
+                    Level::Info => Color::Green,
+                    Level::Warn => Color::Yellow,
+                    Level::Error => Color::Red,
+                    Level::Event => Color::Magenta,
+                };
+                let style = Style::new().bold().fg(color);
+
+                return write!(f, "{}", style.paint(name));
+            }
+        }
+
+        write!(f, "{}", self.level)
+    }
+}
+
+/// `LevelFilter` represents the different [`Level`] of logging we have,
+/// with the addition of `Off`.
 #[repr(usize)]
 #[derive(Clone, Copy, Eq, PartialEq, PartialOrd)]
 pub enum LevelFilter {

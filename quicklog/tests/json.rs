@@ -1,4 +1,4 @@
-use quicklog::{event, info, with_formatter, with_json_formatter};
+use quicklog::{event, formatter, info, with_formatter};
 
 use common::{json::*, SerializeStruct, Something, TestFormatter};
 
@@ -7,7 +7,7 @@ mod common;
 #[test]
 fn macros_json() {
     setup!();
-    with_json_formatter!();
+    formatter().json().init();
 
     let s = SerializeStruct {
         symbol: String::from("Hello"),

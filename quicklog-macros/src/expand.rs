@@ -162,7 +162,6 @@ impl Codegen {
             .iter()
             .map(|f| f.name().to_string())
             .collect();
-        let json = matches!(level, Level::Event);
         let metadata_write = quote! {
             const __NAMES: &'static [&'static str] = &[#(#structured_names),*];
             static __META: quicklog::Metadata = quicklog::Metadata::new(
@@ -172,7 +171,6 @@ impl Codegen {
                 #level,
                 #fmt_str,
                 __NAMES,
-                #json,
             );
         };
 

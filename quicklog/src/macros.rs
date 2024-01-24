@@ -25,20 +25,6 @@ macro_rules! with_formatter {
     }};
 }
 
-/// Sets the [`JsonFormatter`](crate::formatter::JsonFormatter) as the global
-/// default.
-///
-/// By default, logs are formatted with the format `[utc
-/// datetime][log level]"message`. See also the [top-level
-/// documentation](crate#patternformatter) for information on defining your own
-/// formatters.
-#[macro_export]
-macro_rules! with_json_formatter {
-    () => {
-        $crate::logger().use_formatter(std::boxed::Box::new($crate::formatter::JsonFormatter))
-    };
-}
-
 /// Overwrites the [`Flush`](crate::Flush)
 /// implementor in [`Quicklog`](crate::Quicklog) with a
 /// [`FileFlusher`](crate::FileFlusher) using the

@@ -1,7 +1,13 @@
 // Some functions only emitted in macros
 #![allow(dead_code)]
 
-use quicklog::{formatter::PatternFormatter, serialize::Serialize, Flush, Metadata, ReadResult};
+use std::fmt::Write;
+
+use quicklog::{
+    formatter::{LogContext, PatternFormatter, Writer},
+    serialize::Serialize,
+    Flush, ReadResult,
+};
 
 pub(crate) struct VecFlusher {
     pub(crate) vec: &'static mut Vec<String>,
@@ -22,14 +28,14 @@ impl Flush for VecFlusher {
 pub(crate) struct TestFormatter;
 
 impl PatternFormatter for TestFormatter {
-    fn custom_format(
-        &mut self,
-        time: u64,
-        metadata: &Metadata,
-        _: &[String],
-        log_record: &str,
-    ) -> String {
-        format!("[{:?}][{}]\t{}\n", time, metadata.level, log_record)
+    fn custom_format(&self, ctx: LogContext<'_>, writer: &mut Writer) -> std::fmt::Result {
+        writeln!(
+            writer,
+            "[{:?}][{}]\t{}",
+            ctx.timestamp,
+            ctx.metadata.level,
+            ctx.full_message(),
+        )
     }
 }
 

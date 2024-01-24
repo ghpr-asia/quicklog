@@ -1,10 +1,10 @@
-use quicklog::{error, flush, info, init, with_flush_into_file, with_json_formatter};
+use quicklog::{error, flush, formatter, info, init, with_flush_into_file};
 
 // Demonstrates customization of log output destination and formatting.
 fn main() {
     init!();
     // Use JSON format for all logs
-    with_json_formatter!();
+    formatter().json().init();
 
     // These lines will be logged to stdout, by default
     info!(some_field = 1, "Info to stdout");

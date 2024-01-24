@@ -1,18 +1,15 @@
-use quicklog::{
-    error, event, flush, formatter::QuickLogFormatter, info, init, with_formatter,
-    with_json_formatter,
-};
+use quicklog::{error, event, flush, formatter, info, init};
 
 // Demonstrates how to output JSON format.
 //
 // As mentioned in the top-level documentation, there are two main ways to output JSON-formatted
 // logs:
-// 1. Using `with_json_formatter!` to override the global formatter.
+// 1. Configuring the default formatter using the provider `formatter` builder
 // 2. Using `event!` to output a *single* JSON formatted log, with log level `Level::Event`.
 fn main() {
     init!();
     // Use JSON format for all logs
-    with_json_formatter!();
+    formatter().json().init();
 
     // These lines will have JSON format
     info!(some_field = 1, "JSON formatted Info log");
@@ -21,7 +18,7 @@ fn main() {
     while let Ok(()) = flush!() {}
 
     // Revert to default formatter
-    with_formatter!(QuickLogFormatter);
+    formatter().init();
 
     // These lines will have the default [utc datetime][log level]"message" format
     info!(some_field = 1, "Default formatted Info log");

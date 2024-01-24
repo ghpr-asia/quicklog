@@ -1,6 +1,6 @@
 use quicklog::{
-    debug, error, event, flush, formatter::PatternFormatter, info, init, serialize::Serialize,
-    trace, warn, with_formatter, Metadata, ReadResult,
+    debug, error, event, flush, formatter, info, init, serialize::Serialize, trace, warn,
+    ReadResult,
 };
 
 #[derive(Clone, Debug)]
@@ -29,26 +29,14 @@ impl Serialize for S {
     }
 }
 
-struct CustomFormatter;
-
-impl PatternFormatter for CustomFormatter {
-    fn custom_format(
-        &mut self,
-        time: u64,
-        metadata: &Metadata,
-        _: &[String],
-        log_record: &str,
-    ) -> String {
-        format!(
-            "[{:?}][{}][{}][{}]{}\n",
-            time, metadata.file, metadata.line, metadata.level, log_record,
-        )
-    }
-}
-
 fn main() {
     init!();
-    with_formatter!(CustomFormatter);
+    formatter()
+        .with_module_path(true)
+        .with_filename(true)
+        .with_line(true)
+        .with_ansi(true)
+        .init();
 
     trace!("hello world! {} {} {}", 2, 3, 4);
     trace!("hello, world");
