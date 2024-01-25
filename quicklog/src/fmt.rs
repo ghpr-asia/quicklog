@@ -754,7 +754,37 @@ where
     }
 }
 
-/// Configures the default [`QuickLogFormatter`].
+/// Configures the global formatter.
+///
+/// The default formatting behavior can be changed by setting up and then
+/// initializing [`FormatterBuilder`].
+///
+/// # Examples
+///
+/// Only display log message:
+///
+/// ```rust
+/// # fn main() {
+/// quicklog::init!();
+/// quicklog::formatter()
+///     .without_time() // don't output timestamp
+///     .with_level(false) // don't output level
+///     .init();
+/// # }
+/// ```
+///
+/// Format time as ISO 8601 format: (see [`chrono` strftime
+/// docs](https://docs.rs/chrono/0.4.31/chrono/format/strftime/index.html) for
+/// syntax options).
+///
+/// ```rust
+/// # fn main() {
+/// quicklog::init!();
+/// quicklog::formatter()
+///     .with_time_fmt("%+") // ISO 8601 format
+///     .init();
+/// # }
+/// ```
 #[inline]
 pub fn formatter() -> FormatterBuilder<Normal, Utc> {
     FormatterBuilder::default()
