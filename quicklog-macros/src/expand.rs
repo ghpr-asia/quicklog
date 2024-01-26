@@ -203,7 +203,7 @@ impl Codegen {
             return quote! { quicklog::log_header_size() };
         } else if all_serialize {
             let args = all_args.iter().map(|arg| &arg.token);
-            return quote! {  quicklog::log_header_size() + (#(&#args,)*).buffer_size_required() };
+            return quote! {  quicklog::log_header_size() + (#(quicklog::__wrap!(&#args),)*).buffer_size_required() };
         }
 
         let arg_sizes = all_args.iter().map(|arg| {
@@ -213,7 +213,7 @@ impl Codegen {
                     quote! { (quicklog::LogArgType::Fmt, #arg_tok.len()) }
                 }
                 ArgType::Serialize => {
-                    quote! { (quicklog::LogArgType::Serialize, #arg_tok.buffer_size_required())}
+                    quote! { (quicklog::LogArgType::Serialize, quicklog::__wrap!(&#arg_tok).buffer_size_required())}
                 }
             }
         });
@@ -229,9 +229,8 @@ impl Codegen {
             // Optimized case: all arguments are `Serialize`. We skip writing
             // the argument header
             let args: Vec<&TokenStream2> = all_args.iter().map(|arg| &arg.token).collect();
-            let args_kind =
-                quote! { quicklog::ArgsKind::AllSerialize(__decode_fn(&(#(&#args,)*))) };
-            let write = quote! { __state.write(&(#(&#args,)*)); };
+            let args_kind = quote! { quicklog::ArgsKind::AllSerialize(__decode_fn(&(#(quicklog::__wrap!(&#args),)*) )) };
+            let write = quote! { __state.write(&(#(quicklog::__wrap!(&#args),)*) ); };
 
             return (args_kind, write);
         }
@@ -246,7 +245,7 @@ impl Codegen {
                 match arg.ty {
                     ArgType::Fmt => quote! { __state.write_str(#arg_tok); },
                     ArgType::Serialize => {
-                        quote! {  __state.write_serialize(&#arg_tok); }
+                        quote! {  __state.write_serialize(&quicklog::__wrap!(&#arg_tok)); }
                     }
                 }
             })

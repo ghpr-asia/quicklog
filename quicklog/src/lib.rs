@@ -116,10 +116,106 @@
 //! # }
 //! ```
 //!
-//! #### Caveats
+//! ### Caveats
+//!
+//! #### Types implementing `Copy`
+//!
+//! For convenience, `Serialize` is automatically implemented for all types implementing both
+//! [`Copy`] and [`Debug`]. This means that something like the below example should work out of the
+//! box (without needing to derive or manually implement `Serialize`):
+//!
+//! ```rust
+//! # use quicklog::{flush, info, init, with_flush, NoopFlusher};
+//! #[derive(Copy, Clone, Debug)]
+//! struct CopyStruct {
+//!     a: usize,
+//!     b: &'static str,
+//!     c: i32,
+//! }
+//!
+//! # fn main() {
+//! init!();
+//! with_flush!(NoopFlusher);
+//!
+//! let a = CopyStruct {
+//!     a: 0,
+//!     b: "hello world",
+//!     c: -5,
+//! };
+//! // since `CopyStruct` derives `Copy` and `Debug`, `Serialize` is automatically
+//! // implemented
+//! info!(my_copy_struct = a, "Logging Copy struct: {:^}", a);
+//! assert!(flush!().is_ok());
+//! # }
+//! ```
+//!
+//! However, note that [references implement `Copy` as well](https://doc.rust-lang.org/core/marker/trait.Copy.html#impl-Copy-for-%26T). If a reference is passed as a logging argument, `quicklog` will copy the *reference*, not the *underlying data*. This can cause some problems if one is not careful. For instance, the following might cause Undefined Behavior:
+//!
+//! ```rust no_run
+//! # use quicklog::{flush, info, init, with_flush, NoopFlusher};
+//! #[derive(Copy, Clone, Debug)]
+//! struct CopyStruct {
+//!     a: usize,
+//!     b: &'static str,
+//!     c: i32,
+//! }
+//!
+//! # fn main() {
+//! init!();
+//! with_flush!(NoopFlusher);
+//!
+//! let a = CopyStruct {
+//!     a: 0,
+//!     b: "hello world",
+//!     c: -5,
+//! };
+//!
+//! // double reference; reference is taken within *expanded macro scope*.
+//! // once the scope of the expanded `info!` ends, the written reference
+//! // should not be considered valid anymore
+//! info!(my_copy_struct = &&a);
+//! assert!(flush!().is_ok());
+//! # }
+//! ```
+//!
+//! In the above example, the reference only exists *within the scope expanded by the `info!`
+//! macro*, and as such is invalidated when we try to call `flush!`. Since all logging arguments are
+//! already taken by reference, either pass the variable without a reference, or assign the
+//! reference to a variable outside of the logging macro:
+//!
+//! ```rust
+//! # use quicklog::{flush, info, init, with_flush, NoopFlusher};
+//! # #[derive(Copy, Clone, Debug)]
+//! # struct CopyStruct {
+//! #     a: usize,
+//! #     b: &'static str,
+//! #     c: i32,
+//! # }
+//! # fn main() {
+//! # init!();
+//! # with_flush!(NoopFlusher);
+//! # let a = CopyStruct {
+//! #     a: 0,
+//! #     b: "hello world",
+//! #     c: -5,
+//! # };
+//! // pass variable by itself (taken by reference within the macro)
+//! info!(my_copy_struct = a);
+//! assert!(flush!().is_ok());
+//!
+//! // declare top-level reference
+//! // NOTE: `flush!` must be called before the stack variable goes out of scope!
+//! // Otherwise, we will encounter the same issue as with the Undefined Behavior
+//! // example above.
+//! let b = &&a;
+//! info!(my_copy_struct = b);
+//! assert!(flush!().is_ok());
+//! # }
+//! ```
+//!
+//! #### Mixing `Serialize` and `Debug`/`Display` format specifiers
 //!
 //! Due to some constraints, mixing of `Serialize` and `Debug`/`Display` format specifiers in the format string is prohibited. For instance, this will fail to compile:
-//!
 //! ```rust compile_fail
 //! # use quicklog::info;
 //! // mixing {:^} with {:?} or {} not allowed!
@@ -129,7 +225,6 @@
 //! ```
 //!
 //! However, one can mix-and-match these arguments in the _structured fields_, for example:
-//!
 //! ```rust no_run
 //! # use quicklog::info;
 //! # #[derive(Debug, quicklog::Serialize)]
@@ -143,7 +238,6 @@
 //! ```
 //!
 //! In general, for best performance, try to avoid mixing `Serialize` and non-`Serialize` arguments in each logging call. For instance, try to ensure that on performance-critical paths, every logging argument implements `Serialize`:
-//!
 //! ```rust no_run
 //! # use quicklog::info;
 //! # #[derive(quicklog::Serialize)]
@@ -298,7 +392,6 @@
 //! 1. Setup the default formatter using [`formatter()`] to use JSON representation:
 //!
 //! ### Example
-//!
 //! ```rust no_run
 //! use quicklog::{formatter, info, init};
 //!
@@ -316,7 +409,6 @@
 //!    `Level::Event`.
 //!
 //! ### Example
-//!
 //! ```rust no_run
 //! use quicklog::{event, info, init};
 //!
@@ -358,7 +450,6 @@
 //!
 //! A useful mental model would be to think of the normal logging macros (`info!`, `warn!`, etc) as
 //! a call to their deferred equivalents, followed by an immediate call to `commit!`:
-//!
 //! ```rust no_run
 //! # use quicklog::{commit, info, info_defer};
 //! # fn main() {
@@ -375,7 +466,6 @@
 //! Note that the call to `commit!` must be reachable in order to guarantee that data written so
 //! far is committed and becomes visible. This may not always be the case, for instance, when a
 //! function exits early due to an error:
-//!
 //! ```rust no_run
 //! use quicklog::{commit, info_defer};
 //!
@@ -478,6 +568,7 @@
 //! default formatter. See [`FormatterBuilder`] for configuration options. Disabled by default.
 //!
 //! [`Serialize`]: serialize::Serialize
+//! [`Copy`]: std::marker::Copy
 //! [`Debug`]: std::fmt::Debug
 //! [`Display`]: std::fmt::Display
 //! [`StdoutFlusher`]: crate::StdoutFlusher
@@ -885,6 +976,98 @@ pub mod __macro_helpers {
         #[inline(always)]
         fn drop(&mut self) {
             crate::logger().commit_write();
+        }
+    }
+
+    #[repr(transparent)]
+    #[derive(Debug, PartialEq)]
+    pub struct Copy2Serialize<T>(pub T);
+
+    pub struct S<T>(pub T);
+
+    #[allow(unused)]
+    pub struct NoWrapT;
+
+    impl NoWrapT {
+        #[allow(unused)]
+        #[allow(clippy::new_ret_no_self)]
+        #[inline(always)]
+        pub fn new<T>(self, a: S<T>) -> T {
+            a.0
+        }
+    }
+
+    pub trait NoWrap {
+        #[inline(always)]
+        fn wrap(&self) -> NoWrapT {
+            NoWrapT
+        }
+    }
+
+    impl<T: crate::serialize::Serialize> NoWrap for &&S<T> {}
+
+    impl<T> NoWrap for S<T> {}
+
+    #[allow(unused)]
+    pub struct WrapT;
+
+    impl WrapT {
+        #[allow(unused)]
+        #[allow(clippy::new_ret_no_self)]
+        #[inline(always)]
+        pub fn new<T>(self, a: S<T>) -> crate::__macro_helpers::Copy2Serialize<T> {
+            crate::__macro_helpers::Copy2Serialize(a.0)
+        }
+    }
+
+    pub trait Wrap {
+        #[inline(always)]
+        fn wrap(&self) -> WrapT {
+            WrapT
+        }
+    }
+
+    impl<T: Copy + core::fmt::Debug> Wrap for &S<T> {}
+
+    #[macro_export]
+    macro_rules! __wrap {
+        ($e:expr) => {{
+            #[allow(unused)]
+            use $crate::__macro_helpers::{NoWrap, Wrap};
+            (&&&$crate::__macro_helpers::S($e))
+                .wrap()
+                .new($crate::__macro_helpers::S($e))
+        }};
+    }
+
+    #[cfg(test)]
+    mod test {
+        use crate::{self as quicklog, Serialize};
+
+        #[test]
+        fn wrap_copy() {
+            #[derive(Copy, Clone, Debug)]
+            struct CopyStruct {
+                _a: u32,
+            }
+
+            #[derive(Serialize, Copy, Clone, Debug, PartialEq)]
+            struct SerializeStruct {
+                _a: usize,
+            }
+
+            // Serialize takes priority
+            assert_eq!(crate::__wrap!(1_u32), 1);
+
+            let a = CopyStruct { _a: 0 };
+            assert!(matches!(
+                crate::__wrap!(&a),
+                crate::__macro_helpers::Copy2Serialize(_)
+            ));
+
+            // Serialize takes priority
+            let b = SerializeStruct { _a: 0 };
+            assert_eq!(crate::__wrap!(&b), &b);
         }
     }
 }

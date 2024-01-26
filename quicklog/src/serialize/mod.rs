@@ -4,7 +4,12 @@ use std::{
     str::from_utf8,
 };
 
-use crate::{queue::ReadResult, utils::try_split_at, ReadError};
+use crate::{
+    queue::ReadResult,
+    utils::{any_as_bytes, try_split_at},
+    ReadError,
+    __macro_helpers::Copy2Serialize,
+};
 
 /// Allows specification of a custom way to serialize the Struct.
 ///
@@ -94,6 +99,33 @@ pub type DecodeEachFn = for<'buf> fn(&'buf [u8], &mut Vec<String>) -> ReadResult
 
 /// Number of bytes it takes to store the size of a type.
 pub(crate) const SIZE_LENGTH: usize = size_of::<usize>();
+
+impl<T: Copy + core::fmt::Debug> Serialize for Copy2Serialize<&T> {
+    #[inline]
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
+        let buf_ptr = write_buf.as_mut_ptr();
+
+        // SAFETY: We requested the exact amount required from the queue, so
+        // should not run out of space here.
+        unsafe {
+            let b = any_as_bytes(self.0);
+            let n = b.len();
+            buf_ptr.copy_from_nonoverlapping(b.as_ptr(), n);
+            std::slice::from_raw_parts_mut(buf_ptr.add(n), write_buf.len() - n)
+        }
+    }
+
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
+        let (chunk, rest) = try_split_at(read_buf, size_of::<T>())?;
+        let decoded: T = unsafe { core::ptr::read_unaligned(chunk.as_ptr().cast()) };
+
+        Ok((format!("{:?}", decoded), rest))
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        size_of::<T>()
+    }
+}
 
 macro_rules! gen_serialize {
     ($primitive:ty) => {
