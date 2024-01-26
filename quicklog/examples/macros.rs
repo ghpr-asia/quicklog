@@ -35,7 +35,6 @@ fn main() {
         .with_module_path(true)
         .with_filename(true)
         .with_line(true)
-        .with_ansi(true)
         .init();
 
     trace!("hello world! {} {} {}", 2, 3, 4);

@@ -81,11 +81,6 @@ impl Writer {
         self.flusher = flusher;
     }
 
-    #[cfg(feature = "ansi")]
-    fn with_ansi(&mut self, ansi: bool) {
-        self.ansi = ansi;
-    }
-
     /// Writes buffer to underlying flusher.
     pub(crate) fn flush(&mut self) {
         self.flusher.flush_one(std::mem::take(&mut self.buf));
@@ -146,7 +141,7 @@ impl Default for Writer {
             buf: String::new(),
             flusher: Box::new(StdoutFlusher),
             #[cfg(feature = "ansi")]
-            ansi: true,
+            ansi: false,
         }
     }
 }
@@ -409,7 +404,7 @@ pub(crate) struct QuickLogFormatter<Tz> {
     level: bool,
     timestamp: Timestamp<Tz>,
     #[cfg(feature = "ansi")]
-    ansi: Option<bool>,
+    ansi: bool,
 }
 
 impl<Tz: TimeZone> QuickLogFormatter<Tz>
@@ -445,7 +440,6 @@ where
     ) -> std::fmt::Result {
         let dimmed = self
             .ansi
-            .unwrap_or(false)
             .then(|| Style::new().dimmed())
             .unwrap_or_else(Style::new);
 
@@ -514,7 +508,7 @@ where
 /// Default format.
 pub struct Normal {
     #[cfg(feature = "ansi")]
-    ansi: Option<bool>,
+    ansi: bool,
 }
 
 /// JSON format.
@@ -658,7 +652,7 @@ where
         #[cfg(feature = "ansi")]
         {
             Self {
-                format: Normal { ansi: Some(ansi) },
+                format: Normal { ansi },
                 ..self
             }
         }
@@ -728,7 +722,7 @@ impl Default for FormatterBuilder<Normal, Utc> {
             level: true,
             timestamp: Timestamp::default(),
             #[cfg(feature = "ansi")]
-            format: Normal { ansi: None },
+            format: Normal { ansi: true },
             #[cfg(not(feature = "ansi"))]
             format: PhantomData,
         }
@@ -742,9 +736,7 @@ where
     fn custom_format(&self, ctx: LogContext<'_>, writer: &mut Writer) -> std::fmt::Result {
         #[cfg(feature = "ansi")]
         {
-            if let Some(ansi) = self.ansi {
-                writer.with_ansi(ansi);
-            }
+            writer.ansi = self.ansi;
         }
 
         self.format_timestamp(ctx.timestamp, writer)?;
