@@ -519,7 +519,7 @@ mod utils;
 pub mod fmt;
 /// Contains logging levels and filters.
 pub mod level;
-/// [`Serialize`] trait for serialization of various data types to aid in
+/// [`Serialize`](crate::serialize::Serialize) trait for serialization of various data types to aid in
 /// fast logging.
 pub mod serialize;
 
