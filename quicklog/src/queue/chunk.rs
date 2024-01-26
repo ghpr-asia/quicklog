@@ -99,16 +99,21 @@ mod __hidden {
         }
     }
 
-    impl ChunkWrite for &[u8] {
+    struct RawBytes<'a>(&'a [u8]);
+
+    /// Write implementation for a raw byte buffer. This differs from unwrapped
+    /// &[u8] slices in that we don't write the length of the byte slice here.
+    impl ChunkWrite for RawBytes<'_> {
         #[inline]
         fn write(&self, buf: &mut [u8]) -> usize {
-            let n = self.len();
+            let n = self.0.len();
             debug_assert!(buf.len() >= n);
 
             // SAFETY: We requested the exact amount required from the queue, so
             // should not run out of space here.
             unsafe {
-                buf.as_mut_ptr().copy_from_nonoverlapping(self.as_ptr(), n);
+                buf.as_mut_ptr()
+                    .copy_from_nonoverlapping(self.0.as_ptr(), n);
             }
 
             n
@@ -211,7 +216,7 @@ mod __hidden {
                 size_of_arg: formatted.len(),
             };
             self.write(&header);
-            self.write(&formatted.as_bytes());
+            self.write(&RawBytes(formatted.as_bytes()));
         }
 
         /// Writes a type implementing [`ChunkWrite`] by writing through the

@@ -351,6 +351,43 @@ impl<T: Serialize> Serialize for Vec<T> {
     }
 }
 
+impl<T: Copy + core::fmt::Debug> Serialize for &[T] {
+    fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
+        let n = self.len();
+        let elem_size = core::mem::size_of_val(*self);
+        let buf_ptr = write_buf.as_mut_ptr();
+        let buf_len = write_buf.len();
+        debug_assert!(buf_len >= SIZE_LENGTH + elem_size);
+
+        // SAFETY: We requested the exact amount required from the queue, so
+        // should not run out of space here.
+        unsafe {
+            buf_ptr.copy_from_nonoverlapping(n.to_le_bytes().as_ptr(), SIZE_LENGTH);
+            let rest_ptr = buf_ptr.add(SIZE_LENGTH);
+
+            rest_ptr.copy_from_nonoverlapping(self.as_ptr().cast(), elem_size);
+            std::slice::from_raw_parts_mut(
+                rest_ptr.add(elem_size),
+                buf_len - SIZE_LENGTH - elem_size,
+            )
+        }
+    }
+
+    fn decode(read_buf: &[u8]) -> ReadResult<(String, &[u8])> {
+        let (len_chunk, chunk) = try_split_at(read_buf, SIZE_LENGTH)?;
+        let n = usize::from_le_bytes(len_chunk.try_into()?);
+        let (read_chunk, rest) = try_split_at(chunk, n * size_of::<T>())?;
+
+        let decoded: &[T] = unsafe { std::slice::from_raw_parts(read_chunk.as_ptr().cast(), n) };
+
+        Ok((format!("{:?}", decoded), rest))
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        SIZE_LENGTH + core::mem::size_of_val(*self)
+    }
+}
+
 impl<T: Serialize> Serialize for Box<T> {
     #[inline]
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> &'buf mut [u8] {
@@ -728,6 +765,38 @@ mod tests {
         _ = a.encode(&mut buf);
 
         decode_and_assert!(a, format!("{:?}", a), &buf);
+    }
+
+    #[test]
+    fn serialize_copy_slices() {
+        #[derive(Copy, Clone, Debug)]
+        struct CopyStruct {
+            _a: u32,
+            _b: usize,
+            _c: i32,
+        }
+
+        let mut buf = [0; 1024];
+        let a = [0_u32; 10];
+        let ar = a.as_slice();
+        let rest = ar.encode(&mut buf);
+
+        let b = CopyStruct {
+            _a: 1,
+            _b: 2,
+            _c: -3,
+        };
+        let c = [b; 10];
+        let cr = c.as_slice();
+        let rest = cr.encode(rest);
+
+        let d = [1_u8; 256];
+        let dr = d.as_slice();
+        _ = dr.encode(rest);
+
+        let rest = decode_and_assert!(ar, format!("{:?}", ar), &buf);
+        let rest = decode_and_assert!(cr, format!("{:?}", cr), rest);
+        decode_and_assert!(dr, format!("{:?}", dr), rest);
     }
 
     #[test]

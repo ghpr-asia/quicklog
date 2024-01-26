@@ -181,17 +181,17 @@ fn enum_no_fields() {
 #[test]
 fn enum_fields() {
     #[derive(Serialize)]
-    enum TestEnum {
+    enum TestEnum<'a> {
         Foo(String),
         Bar { a: String, b: usize },
-        Baz(TestStruct),
+        Baz(TestStruct<'a>),
     }
 
     #[derive(Serialize)]
-    struct TestStruct {
+    struct TestStruct<'a> {
         a: usize,
         b: i32,
-        c: u32,
+        c: &'a [u8],
     }
 
     let a = TestEnum::Foo("hello world".to_string());
@@ -199,10 +199,12 @@ fn enum_fields() {
         a: "hello bar".to_string(),
         b: 999,
     };
+    let buf = [0_u8; 16];
+    let slice = buf.as_slice();
     let c = TestEnum::Baz(TestStruct {
         a: 0,
         b: -999,
-        c: 2,
+        c: slice,
     });
     let mut buf = [0; 256];
 
@@ -212,5 +214,9 @@ fn enum_fields() {
 
     let rest = decode_and_assert!(a, "Foo(hello world)", &buf);
     let rest = decode_and_assert!(b, "Bar { a: hello bar, b: 999 }", rest);
-    _ = decode_and_assert!(c, "Baz(TestStruct { a: 0, b: -999, c: 2 })", rest);
+    _ = decode_and_assert!(
+        c,
+        format!("Baz(TestStruct {{ a: 0, b: -999, c: {:?} }})", slice),
+        rest
+    );
 }
