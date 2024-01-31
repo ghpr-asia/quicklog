@@ -1,0 +1,5 @@
+error: expected comma after specifying target.
+ --> tests/failures/target_no_delimiting_comma.rs:5:19
+  |
+5 |     info!(target: "my_module" "Hello world");
+  |                   ^^^^^^^^^^^

@@ -262,7 +262,7 @@ impl From<std::fmt::Error> for FlushErrorRepr {
 /// Information about each logging event.
 #[derive(Debug, PartialEq)]
 pub struct Metadata {
-    pub module_path: &'static str,
+    pub target: &'static str,
     pub file: &'static str,
     pub line: u32,
     pub level: Level,
@@ -273,7 +273,7 @@ pub struct Metadata {
 impl Metadata {
     #[inline]
     pub const fn new(
-        module_path: &'static str,
+        target: &'static str,
         file: &'static str,
         line: u32,
         level: Level,
@@ -281,7 +281,7 @@ impl Metadata {
         fields: &'static [&'static str],
     ) -> Self {
         Self {
-            module_path,
+            target,
             file,
             line,
             level,

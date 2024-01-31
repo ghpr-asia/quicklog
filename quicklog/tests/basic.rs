@@ -17,6 +17,18 @@ fn macros_basic() {
         assert_message_equal!(error!("hello world"), "hello world");
     }
 
+    // Target
+    {
+        assert_message_with_target_equal!(
+            info!(target: "my_module", "hello world {:^}", 5),
+            format!("[my_module]\thello world 5")
+        );
+        assert_message_with_target_equal!(
+            info!(target: "my_module", a = %1, b = ?2, c = "hello there", "with structured fields: {:^}", 5),
+            format!("[my_module]\twith structured fields: 5 a=1 b=2 c=hello there")
+        );
+    }
+
     // Level
     {
         assert_message_with_level_equal!(

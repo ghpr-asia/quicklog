@@ -214,7 +214,7 @@ pub trait PatternFormatter {
 /// # }
 /// ```
 pub(crate) struct JsonFormatter<Tz: TimeZone> {
-    module_path: bool,
+    target: bool,
     filename: bool,
     line: bool,
     level: bool,
@@ -224,7 +224,7 @@ pub(crate) struct JsonFormatter<Tz: TimeZone> {
 impl Default for JsonFormatter<Utc> {
     fn default() -> Self {
         Self {
-            module_path: false,
+            target: false,
             filename: false,
             line: false,
             level: true,
@@ -267,14 +267,14 @@ where
             write!(writer, "\"filename\": \"{}\"", ctx.metadata.file)?;
         }
 
-        if self.module_path {
+        if self.target {
             if has_previous {
                 write!(writer, ",")?;
             } else {
                 has_previous = true;
             }
 
-            write!(writer, "\"filename\": \"{}\"", ctx.metadata.module_path)?;
+            write!(writer, "\"filename\": \"{}\"", ctx.metadata.target)?;
         }
 
         if self.line {
@@ -398,7 +398,7 @@ impl Default for TimestampFormat {
 
 /// A basic formatter implementing [`PatternFormatter`].
 pub(crate) struct QuickLogFormatter<Tz> {
-    module_path: bool,
+    target: bool,
     filename: bool,
     line: bool,
     level: bool,
@@ -449,16 +449,16 @@ where
                 "{}{}{}",
                 dimmed.paint(ctx.metadata.file),
                 dimmed.paint(":"),
-                if self.module_path { "" } else { " " }
+                if self.target { "" } else { " " }
             )?;
         }
 
         let line_number = self.line.then_some(ctx.metadata.line);
-        if self.module_path {
+        if self.target {
             write!(
                 writer,
                 "{}{}{}",
-                dimmed.paint(ctx.metadata.module_path),
+                dimmed.paint(ctx.metadata.target),
                 dimmed.paint(":"),
                 if line_number.is_some() { "" } else { " " }
             )?;
@@ -483,16 +483,16 @@ where
                 writer,
                 "{}:{}",
                 ctx.metadata.file,
-                if self.module_path { "" } else { " " }
+                if self.target { "" } else { " " }
             )?;
         }
 
         let line_number = self.line.then_some(ctx.metadata.line);
-        if self.module_path {
+        if self.target {
             write!(
                 writer,
                 "{}:{}",
-                ctx.metadata.module_path,
+                ctx.metadata.target,
                 if line_number.is_some() { "" } else { " " }
             )?;
         }
@@ -516,7 +516,7 @@ pub struct Json;
 
 /// Configuration builder.
 pub struct FormatterBuilder<F, Tz> {
-    module_path: bool,
+    target: bool,
     filename: bool,
     line: bool,
     level: bool,
@@ -532,11 +532,8 @@ where
     Tz::Offset: std::fmt::Display,
 {
     /// Toggles whether to print module path.
-    pub fn with_module_path(self, module_path: bool) -> Self {
-        Self {
-            module_path,
-            ..self
-        }
+    pub fn with_target(self, target: bool) -> Self {
+        Self { target, ..self }
     }
 
     /// Toggles whether to print filename.
@@ -561,7 +558,7 @@ where
     pub fn with_time(self) -> FormatterBuilder<F, Utc> {
         FormatterBuilder {
             timestamp: Timestamp::default(),
-            module_path: self.module_path,
+            target: self.target,
             filename: self.filename,
             line: self.line,
             level: self.level,
@@ -595,7 +592,7 @@ where
                 },
                 display_timestamp: true,
             },
-            module_path: self.module_path,
+            target: self.target,
             filename: self.filename,
             line: self.line,
             level: self.level,
@@ -612,7 +609,7 @@ where
                 },
                 display_timestamp: true,
             },
-            module_path: self.module_path,
+            target: self.target,
             filename: self.filename,
             line: self.line,
             level: self.level,
@@ -661,7 +658,7 @@ where
     /// Transforms the underlying format to use JSON formatting.
     pub fn json(self) -> FormatterBuilder<Json, Tz> {
         FormatterBuilder {
-            module_path: self.module_path,
+            target: self.target,
             filename: self.filename,
             line: self.line,
             level: self.level,
@@ -681,7 +678,7 @@ where
 
     pub(crate) fn build(self) -> QuickLogFormatter<Tz> {
         QuickLogFormatter {
-            module_path: self.module_path,
+            target: self.target,
             filename: self.filename,
             line: self.line,
             level: self.level,
@@ -704,7 +701,7 @@ where
 
     pub(crate) fn build(self) -> JsonFormatter<Tz> {
         JsonFormatter {
-            module_path: self.module_path,
+            target: self.target,
             filename: self.filename,
             line: self.line,
             level: self.level,
@@ -716,7 +713,7 @@ where
 impl Default for FormatterBuilder<Normal, Utc> {
     fn default() -> Self {
         Self {
-            module_path: false,
+            target: false,
             filename: false,
             line: false,
             level: true,

@@ -162,10 +162,15 @@ impl Codegen {
             .iter()
             .map(|f| f.name().to_string())
             .collect();
+        let target = args
+            .target
+            .as_ref()
+            .map(|t| quote! { #t })
+            .unwrap_or_else(|| quote! { std::module_path!()});
         let metadata_write = quote! {
             const __NAMES: &'static [&'static str] = &[#(#structured_names),*];
             static __META: quicklog::Metadata = quicklog::Metadata::new(
-                std::module_path!(),
+                #target,
                 std::file!(),
                 std::line!(),
                 #level,

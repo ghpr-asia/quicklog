@@ -31,9 +31,10 @@ impl PatternFormatter for TestFormatter {
     fn custom_format(&self, ctx: LogContext<'_>, writer: &mut Writer) -> std::fmt::Result {
         writeln!(
             writer,
-            "[{:?}][{}]\t{}",
+            "[{:?}][{}][{}]\t{}",
             ctx.timestamp,
             ctx.metadata.level,
+            ctx.metadata.target,
             ctx.full_message(),
         )
     }
@@ -49,10 +50,20 @@ pub(crate) fn message_from_log_line(log_line: &str) -> String {
 
 pub(crate) fn message_and_level_from_log_line(log_line: &str) -> String {
     let timestamp_end_idx = log_line.find(']').unwrap() + 1;
+    let level_end_idx = log_line[timestamp_end_idx..].find(']').unwrap() + 1;
+    let msg_idx = log_line.find('\t').unwrap();
+
+    log_line[timestamp_end_idx..(timestamp_end_idx + level_end_idx)].to_string()
+        + &log_line[msg_idx..(log_line.len() - 1)]
+}
+
+pub(crate) fn message_and_target_from_log_line(log_line: &str) -> String {
+    let timestamp_end_idx = log_line.find(']').unwrap() + 1;
+    let level_end_idx = log_line[timestamp_end_idx..].find(']').unwrap() + 1;
     log_line
         .chars()
-        .skip(timestamp_end_idx)
-        .take(log_line.len() - timestamp_end_idx - 1)
+        .skip(timestamp_end_idx + level_end_idx)
+        .take(log_line.len() - level_end_idx - timestamp_end_idx - 1)
         .collect::<String>()
 }
 
@@ -282,6 +293,11 @@ macro_rules! assert_message_equal {
 #[macro_export]
 macro_rules! assert_message_with_level_equal {
     ($f:expr, $format_string:expr) => { helper_assert!(@ $f, $format_string, common::message_and_level_from_log_line) };
+}
+
+#[macro_export]
+macro_rules! assert_message_with_target_equal {
+    ($f:expr, $format_string:expr) => { helper_assert!(@ $f, $format_string, common::message_and_target_from_log_line) };
 }
 
 #[macro_export]

@@ -1,0 +1,5 @@
+error: unknown identifier specified for target. If overriding the default target, only syntax of the form `info!(target: "my_crate", ...)` is accepted.
+ --> tests/failures/target_wrong_specifier.rs:5:11
+  |
+5 |     info!(non_target: "my_module", "Hello world");
+  |           ^^^^^^^^^^

@@ -32,7 +32,7 @@ impl Serialize for S {
 fn main() {
     init!();
     formatter()
-        .with_module_path(true)
+        .with_target(true)
         .with_filename(true)
         .with_line(true)
         .init();
@@ -82,12 +82,15 @@ fn main() {
     info!(debug_impl = ?s_0, display_impl = %s_0, serialize_impl = s_0);
 
     // Debug/display/serialize with format string
-    info!(debug_impl = ?s_0, "Display struct: {}", s_0);
+    info!(debug_impl = ?s_0, serialize_impl = s_0, "Display and serialize structs: {} {:^}", s_0, s_1);
     info!(display_impl = %s_0, "Debug and display structs: {:?} {};", s_0, s_0);
 
     // Named parameters
     info!(debug_impl = ?s_0, "My struct {a}", a = s_0);
     info!(debug_impl = ?s_0, "My struct {s_0:?}");
+
+    // Specifying custom target
+    info!(target: "example_module", s_1, "Hello world {:^}", s_0);
 
     // JSON formatting
     event!(key1 = ?s_0, key2 = %s_0, "Some message: {a}", a = s_1);

@@ -327,6 +327,7 @@ impl<T: Parse + ToTokens> ToTokens for NamedField<T> {
 /// Having these separate components in mind can be useful for understanding
 /// how the logging macros expand out.
 pub(crate) struct Args {
+    pub(crate) target: Option<Expr>,
     /// `?debug_struct`, `%display_struct`
     pub(crate) prefixed_fields: PrefixedFields,
     /// `"Hello World {some_data}"`
@@ -340,6 +341,24 @@ impl Parse for Args {
         if input.is_empty() {
             return Err(input.error("no logging arguments or message"));
         }
+
+        let target = if input.peek(Ident) && input.peek2(Token![:]) {
+            let target_ident: Ident = input.parse()?;
+            input.parse::<Token![:]>()?;
+
+            if target_ident != "target" {
+                return Err(syn::parse::Error::new(target_ident.span(), "unknown identifier specified for target. If overriding the default target, only syntax of the form `info!(target: \"my_crate\", ...)` is accepted."));
+            }
+
+            let target: Expr = input.parse()?;
+            input.parse::<Token![,]>().map_err(|_| {
+                syn::parse::Error::new(target.span(), "expected comma after specifying target.")
+            })?;
+
+            Some(target)
+        } else {
+            None
+        };
 
         let mut prefixed_fields: PrefixedFields = Punctuated::new();
         loop {
@@ -356,7 +375,7 @@ impl Parse for Args {
                 if !input.is_empty() {
                     return Err(syn::parse::Error::new(
                         prefixed_fields.last().unwrap().arg().span(),
-                        "missing comma following argument",
+                        "missing comma following argument.",
                     ));
                 }
 
@@ -402,6 +421,7 @@ impl Parse for Args {
             };
 
             Ok(Self {
+                target,
                 prefixed_fields,
                 format_string: Some(format_string),
                 formatting_args,
@@ -409,6 +429,7 @@ impl Parse for Args {
         } else {
             // No format string, just terminate
             Ok(Self {
+                target,
                 prefixed_fields,
                 format_string: None,
                 formatting_args: ExprFields::new(),
