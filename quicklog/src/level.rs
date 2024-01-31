@@ -207,6 +207,13 @@ pub enum LevelFilter {
     Off = 6,
 }
 
+impl LevelFilter {
+    #[inline(always)]
+    pub(crate) fn is_enabled(&self, level: Level) -> bool {
+        level as usize >= *self as usize
+    }
+}
+
 impl std::fmt::Display for LevelFilter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let level_filter = match self {

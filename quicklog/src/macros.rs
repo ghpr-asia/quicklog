@@ -25,6 +25,17 @@ macro_rules! with_formatter {
     }};
 }
 
+/// Sets a [`TargetFilter`](crate::target::TargetFilter) on the global logger.
+///
+/// This filters out logs at runtime based on their target and the log level
+/// filter attached to it.
+#[macro_export]
+macro_rules! with_target_filter {
+    ($filter:expr) => {{
+        $crate::logger().with_target_filter($filter)
+    }};
+}
+
 /// Overwrites the [`Flush`](crate::Flush)
 /// implementor in [`Quicklog`](crate::Quicklog) with a
 /// [`FileFlusher`](crate::FileFlusher) using the

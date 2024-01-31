@@ -476,12 +476,17 @@ pub(crate) fn expand_parsed(level: Level, args: Args, defer_commit: bool) -> Tok
         }};
     }
 
+    let target = args
+        .target
+        .as_ref()
+        .map(|e| e.into_token_stream())
+        .unwrap_or_else(|| quote! { std::module_path!() });
     let check = match level {
         Level::Info | Level::Event => quote! {
-            __likely(__logger.is_level_enabled(#level))
+            __likely(__logger.is_enabled(#target, #level))
         },
         Level::Trace | Level::Debug | Level::Warn | Level::Error => quote! {
-            __unlikely(__logger.is_level_enabled(#level))
+            __unlikely(__logger.is_enabled(#target, #level))
         },
     };
 

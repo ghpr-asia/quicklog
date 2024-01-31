@@ -327,7 +327,7 @@ impl<T: Parse + ToTokens> ToTokens for NamedField<T> {
 /// Having these separate components in mind can be useful for understanding
 /// how the logging macros expand out.
 pub(crate) struct Args {
-    pub(crate) target: Option<Expr>,
+    pub(crate) target: Option<LitStr>,
     /// `?debug_struct`, `%display_struct`
     pub(crate) prefixed_fields: PrefixedFields,
     /// `"Hello World {some_data}"`
@@ -350,7 +350,7 @@ impl Parse for Args {
                 return Err(syn::parse::Error::new(target_ident.span(), "unknown identifier specified for target. If overriding the default target, only syntax of the form `info!(target: \"my_crate\", ...)` is accepted."));
             }
 
-            let target: Expr = input.parse()?;
+            let target: LitStr = input.parse()?;
             input.parse::<Token![,]>().map_err(|_| {
                 syn::parse::Error::new(target.span(), "expected comma after specifying target.")
             })?;

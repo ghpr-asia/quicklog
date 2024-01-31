@@ -26,3 +26,4 @@ maintenance = { status = "actively-developed" }
 [features]
 ansi = ["dep:nu-ansi-term"]
 bench = []
+target-filter = []

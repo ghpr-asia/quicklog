@@ -566,6 +566,8 @@
 //!
 //! - `ansi`: enables ANSI colors and formatting. When enabled, will toggle on ANSI colors in the
 //! default formatter. See [`FormatterBuilder`] for configuration options. Disabled by default.
+//! - `target-filter`: enables target-based filtering. When enabled, allows the use of
+//! [`TargetFilter`] to filter out logs based on the logging target.
 //!
 //! [`Serialize`]: serialize::Serialize
 //! [`Copy`]: std::marker::Copy
@@ -613,6 +615,8 @@ pub mod level;
 /// [`Serialize`](crate::serialize::Serialize) trait for serialization of various data types to aid in
 /// fast logging.
 pub mod serialize;
+/// Contains target filters.
+pub mod target;
 
 use bumpalo::Bump;
 use fmt::{FormatterBuilder, JsonFormatter, LogContext, PatternFormatter, Writer};
@@ -620,6 +624,7 @@ use level::{Level, LevelFilter};
 use minstant::{Anchor, Instant};
 use serialize::DecodeFn;
 use std::cell::OnceCell;
+use target::TargetFilter;
 
 use crate::queue::FlushErrorRepr;
 
@@ -691,6 +696,8 @@ pub struct Quicklog {
     sender: Producer,
     receiver: Consumer,
     fmt_buffer: Bump,
+    #[cfg(feature = "target-filter")]
+    target_filter: Option<TargetFilter>,
 }
 
 impl Quicklog {
@@ -710,6 +717,8 @@ impl Quicklog {
             sender,
             receiver,
             fmt_buffer: Bump::with_capacity(MAX_FMT_BUFFER_CAPACITY),
+            #[cfg(feature = "target-filter")]
+            target_filter: None,
         }
     }
 
@@ -717,7 +726,47 @@ impl Quicklog {
     /// will be enabled, whereas the rest will be disabled.
     #[inline(always)]
     pub fn is_level_enabled(&self, level: Level) -> bool {
-        level as usize >= self.log_level as usize
+        self.log_level.is_enabled(level)
+    }
+
+    #[inline]
+    pub fn with_target_filter(&mut self, _target_filter: TargetFilter) {
+        #[cfg(feature = "target-filter")]
+        {
+            self.target_filter = Some(_target_filter);
+        }
+
+        #[cfg(not(feature = "target-filter"))]
+        {
+            eprintln!("Called `with_target_filter` but `target-filter` feature not enabled; this setting will be ignored.");
+        }
+    }
+
+    /// Logs are enabled in the following priority order:
+    /// - If there is a [`LevelFilter`] set for the provided target, then we
+    /// check against that.
+    /// - Otherwise, fallback to the global (default) `LevelFilter`.
+    #[inline(always)]
+    pub fn is_enabled(&self, _target: &str, level: Level) -> bool {
+        #[cfg(not(feature = "target-filter"))]
+        {
+            self.is_level_enabled(level)
+        }
+
+        #[cfg(feature = "target-filter")]
+        {
+            // Default to global level filter if overall target filter not set
+            // or filter not set for this specific target
+            let Some(target_level) = self
+                .target_filter
+                .as_ref()
+                .and_then(|filter| filter.target_level(_target))
+            else {
+                return self.is_level_enabled(level);
+            };
+
+            target_level.is_enabled(level)
+        }
     }
 
     /// Eagerly initializes the global [`Quicklog`] logger.
@@ -1052,7 +1101,6 @@ pub mod __macro_helpers {
             }
         }
 
-        ///
         impl<T: Copy + core::fmt::Display> DisplayWrap for &&S<T> {}
 
         #[allow(unused)]
