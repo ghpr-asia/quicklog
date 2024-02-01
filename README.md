@@ -180,7 +180,6 @@ Full benchmarks can be found in the [benchmarks folder](quicklog/benches).
 
 `quicklog` is still in heavy development and lacks many features supported by e.g. [`tracing`](https://docs.rs/tracing/latest/tracing/), arguably the de facto crate for logging. For instance, `quicklog` currently lacks support for:
 
-- Named targets within the logging macro, e.g.`info!(target: "my_context", ...)`.
 - [Spans](https://docs.rs/tracing/latest/tracing/#spans) and logging in asynchronous contexts.
 - Integration with certain third-party crates, e.g. through `tracing-subscriber`.
 
