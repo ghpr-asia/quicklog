@@ -979,66 +979,117 @@ pub mod __macro_helpers {
         }
     }
 
-    #[repr(transparent)]
-    #[derive(Debug, PartialEq)]
-    pub struct Copy2Serialize<T>(pub T);
+    /// Helpers for implementing trait dispatch based on a priority order.
+    ///
+    /// This allows us to dispatch, statically, on specialized implementations
+    /// of `Serialize`, depending on what trait bounds the input satifies.
+    /// Currently, the priority order is Serialize > Copy + Display > Copy +
+    /// Debug > Nothing (error thrown).
+    /// This means that for any type `T`:
+    /// - `T` has a custom/derived `Serialize` implementation: this is used, as expected.
+    /// - Otherwise, if `T` satifies `Copy` and `Display`: we use a
+    /// custom `Serialize` implementation by wrapping it in `CopyDisplay2Serialize`.
+    /// - Otherwise, if `T` satifies `Copy` and `Debug`: we use a
+    /// custom `Serialize` implementation by wrapping it in `CopyDbg2Serialize`.
+    /// - Otherwise, `T` doesn't satisfy any bounds which we provide `Serialize` implementation
+    /// for, and will throw an error.
+    ///
+    /// This priority is enforced through wrapping the input argument through
+    /// `__wrap` with layers of references. The compiler will then dispatch on
+    /// the first trait implemented for the wrapper type with the highest number
+    /// of references, continuously dereferencing until it reaches a satisfied
+    /// trait.
+    mod dispatch {
+        #[repr(transparent)]
+        #[derive(Debug, PartialEq)]
+        pub struct CopyDbg2Serialize<T>(pub T);
 
-    pub struct S<T>(pub T);
+        #[repr(transparent)]
+        #[derive(Debug, PartialEq)]
+        pub struct CopyDisplay2Serialize<T>(pub T);
 
-    #[allow(unused)]
-    pub struct NoWrapT;
+        pub struct S<T>(pub T);
 
-    impl NoWrapT {
         #[allow(unused)]
-        #[allow(clippy::new_ret_no_self)]
-        #[inline(always)]
-        pub fn new<T>(self, a: S<T>) -> T {
-            a.0
-        }
-    }
+        pub struct NoWrapT;
 
-    pub trait NoWrap {
-        #[inline(always)]
-        fn wrap(&self) -> NoWrapT {
-            NoWrapT
-        }
-    }
-
-    impl<T: crate::serialize::Serialize> NoWrap for &&S<T> {}
-
-    impl<T> NoWrap for S<T> {}
-
-    #[allow(unused)]
-    pub struct WrapT;
-
-    impl WrapT {
-        #[allow(unused)]
-        #[allow(clippy::new_ret_no_self)]
-        #[inline(always)]
-        pub fn new<T>(self, a: S<T>) -> crate::__macro_helpers::Copy2Serialize<T> {
-            crate::__macro_helpers::Copy2Serialize(a.0)
-        }
-    }
-
-    pub trait Wrap {
-        #[inline(always)]
-        fn wrap(&self) -> WrapT {
-            WrapT
-        }
-    }
-
-    impl<T: Copy + core::fmt::Debug> Wrap for &S<T> {}
-
-    #[macro_export]
-    macro_rules! __wrap {
-        ($e:expr) => {{
+        impl NoWrapT {
             #[allow(unused)]
-            use $crate::__macro_helpers::{NoWrap, Wrap};
-            (&&&$crate::__macro_helpers::S($e))
-                .wrap()
-                .new($crate::__macro_helpers::S($e))
-        }};
+            #[allow(clippy::new_ret_no_self)]
+            #[inline(always)]
+            pub fn new<T>(self, a: S<T>) -> T {
+                a.0
+            }
+        }
+
+        pub trait NoWrap {
+            #[inline(always)]
+            fn wrap(&self) -> NoWrapT {
+                NoWrapT
+            }
+        }
+
+        impl<T: crate::serialize::Serialize> NoWrap for &&&S<T> {}
+
+        impl<T> NoWrap for S<T> {}
+
+        #[allow(unused)]
+        pub struct DisplayWrapT;
+
+        impl DisplayWrapT {
+            #[allow(unused)]
+            #[allow(clippy::new_ret_no_self)]
+            #[inline(always)]
+            pub fn new<T>(self, a: S<T>) -> CopyDisplay2Serialize<T> {
+                CopyDisplay2Serialize(a.0)
+            }
+        }
+
+        pub trait DisplayWrap {
+            #[inline(always)]
+            fn wrap(&self) -> DisplayWrapT {
+                DisplayWrapT
+            }
+        }
+
+        ///
+        impl<T: Copy + core::fmt::Display> DisplayWrap for &&S<T> {}
+
+        #[allow(unused)]
+        pub struct DebugWrapT;
+
+        impl DebugWrapT {
+            #[allow(unused)]
+            #[allow(clippy::new_ret_no_self)]
+            #[inline(always)]
+            pub fn new<T>(self, a: S<T>) -> CopyDbg2Serialize<T> {
+                CopyDbg2Serialize(a.0)
+            }
+        }
+
+        pub trait DebugWrap {
+            #[inline(always)]
+            fn wrap(&self) -> DebugWrapT {
+                DebugWrapT
+            }
+        }
+
+        impl<T: Copy + core::fmt::Debug> DebugWrap for &S<T> {}
+
+        #[doc(hidden)]
+        #[macro_export]
+        macro_rules! __wrap {
+            ($e:expr) => {{
+                #[allow(unused)]
+                use $crate::__macro_helpers::{DebugWrap, DisplayWrap, NoWrap};
+                (&&&&$crate::__macro_helpers::S($e))
+                    .wrap()
+                    .new($crate::__macro_helpers::S($e))
+            }};
+        }
     }
+
+    pub use dispatch::*;
 
     #[cfg(test)]
     mod test {
@@ -1047,8 +1098,19 @@ pub mod __macro_helpers {
         #[test]
         fn wrap_copy() {
             #[derive(Copy, Clone, Debug)]
-            struct CopyStruct {
+            struct CopyDebugStruct {
                 _a: u32,
+            }
+
+            #[derive(Copy, Clone, Debug)]
+            struct CopyDisplayStruct {
+                _b: u32,
+            }
+
+            impl core::fmt::Display for CopyDisplayStruct {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(f, "{}", self._b)
+                }
             }
 
             #[derive(Serialize, Copy, Clone, Debug, PartialEq)]
@@ -1056,18 +1118,30 @@ pub mod __macro_helpers {
                 _a: usize,
             }
 
+            impl core::fmt::Display for SerializeStruct {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(f, "{}", self._a)
+                }
+            }
+
             // Serialize takes priority
             assert_eq!(crate::__wrap!(1_u32), 1);
 
-            let a = CopyStruct { _a: 0 };
+            let s = SerializeStruct { _a: 0 };
+            assert_eq!(crate::__wrap!(&s), &s);
+
+            let a = CopyDebugStruct { _a: 0 };
             assert!(matches!(
                 crate::__wrap!(&a),
-                crate::__macro_helpers::Copy2Serialize(_)
+                crate::__macro_helpers::CopyDbg2Serialize(_)
             ));
 
-            // Serialize takes priority
-            let b = SerializeStruct { _a: 0 };
-            assert_eq!(crate::__wrap!(&b), &b);
+            // Display takes priority (over Debug)
+            let b = CopyDisplayStruct { _b: 0 };
+            assert!(matches!(
+                crate::__wrap!(&b),
+                crate::__macro_helpers::CopyDisplay2Serialize(_)
+            ));
         }
     }
 }

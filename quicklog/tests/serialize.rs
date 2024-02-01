@@ -6,10 +6,29 @@ mod common;
 
 #[allow(unused)]
 #[derive(Copy, Clone, Debug)]
-struct CopyStruct {
+struct CopyDebugStruct {
     a: usize,
     b: i32,
     c: u8,
+}
+
+#[allow(unused)]
+#[derive(Copy, Clone)]
+struct CopyDisplayStruct {
+    a: usize,
+    b: &'static str,
+    c: Option<i32>,
+}
+
+impl core::fmt::Display for CopyDisplayStruct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}, {}", self.a, self.b)?;
+        if let Some(c) = self.c {
+            write!(f, ", {}", c)?;
+        }
+
+        Ok(())
+    }
 }
 
 #[test]
@@ -23,7 +42,12 @@ fn macros_serialize() {
         vec: [1; 100],
         some: "The quick brown fox jumps over the lazy dog",
     };
-    let c = CopyStruct { a: 0, b: -1, c: 99 };
+    let c = CopyDebugStruct { a: 0, b: -1, c: 99 };
+    let d = CopyDisplayStruct {
+        a: 0,
+        b: "hello world",
+        c: Some(5),
+    };
 
     assert_message_equal!(info!(s), "s=Hello");
     assert_message_equal!(info!(s, "with fmt string:"), "with fmt string: s=Hello");
@@ -44,22 +68,30 @@ fn macros_serialize() {
     );
 
     assert_message_equal!(
-        info!(a = ?bs, b = c, "with auto copy serialize and eager: {:^} {:^}", c, c),
+        info!(a = ?bs, b = c, "with auto copy debug serialize and eager: {:^} {:^}", c, c),
         format!(
-            "with auto copy serialize and eager: {:?} {:?} a={:?} b={:?}",
+            "with auto copy debug serialize and eager: {:?} {:?} a={:?} b={:?}",
             c, c, bs, c
+        )
+    );
+
+    assert_message_equal!(
+        info!(a = ?bs, b = d, "with auto copy display serialize and eager: {:^} {:^}", d, d),
+        format!(
+            "with auto copy display serialize and eager: {} {} a={:?} b={}",
+            d, d, bs, d
         )
     );
 
     // NOTE: if taking reference to stack Copy-able variable, must declare new
     // variable *outside of the macro*.
     // Also, must flush before end of current function scope.
-    let d = &&c;
+    let e = &&c;
     assert_message_equal!(
-        info!(a = ?bs, b = d, "with auto copy serialize and eager: {:^} {:^}", c, c),
+        info!(a = ?bs, b = e, "with auto copy serialize and eager: {:^} {:^}", c, c),
         format!(
             "with auto copy serialize and eager: {:?} {:?} a={:?} b={:?}",
-            c, c, bs, d
+            c, c, bs, e
         )
     );
 
