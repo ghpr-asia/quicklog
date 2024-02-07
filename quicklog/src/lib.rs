@@ -861,7 +861,7 @@ impl Quicklog {
         }
 
         let log_ctx = LogContext::new(time, log_header.metadata, &decoded_args);
-        let fmt_res = if matches!(log_ctx.metadata.level, Level::Event) {
+        let fmt_res = if matches!(log_ctx.metadata().level(), Level::Event) {
             JsonFormatter::default().custom_format(log_ctx, &mut self.writer)
         } else {
             self.formatter.custom_format(log_ctx, &mut self.writer)

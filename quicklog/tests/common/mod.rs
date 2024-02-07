@@ -32,9 +32,9 @@ impl PatternFormatter for TestFormatter {
         writeln!(
             writer,
             "[{:?}][{}][{}]\t{}",
-            ctx.timestamp,
-            ctx.metadata.level,
-            ctx.metadata.target,
+            ctx.timestamp(),
+            ctx.metadata().level(),
+            ctx.metadata().target(),
             ctx.full_message(),
         )
     }

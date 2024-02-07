@@ -262,12 +262,12 @@ impl From<std::fmt::Error> for FlushErrorRepr {
 /// Information about each logging event.
 #[derive(Debug, PartialEq)]
 pub struct Metadata {
-    pub target: &'static str,
-    pub file: &'static str,
-    pub line: u32,
-    pub level: Level,
-    pub format_str: &'static str,
-    pub fields: &'static [&'static str],
+    target: &'static str,
+    file: &'static str,
+    line: u32,
+    level: Level,
+    format_str: &'static str,
+    fields: &'static [&'static str],
 }
 
 impl Metadata {
@@ -288,5 +288,39 @@ impl Metadata {
             format_str,
             fields,
         }
+    }
+
+    /// The logging target. Can be overridden with the `target: ...` syntax
+    /// within the logging macros, defaults to the module path otherwise.
+    pub fn target(&self) -> &'static str {
+        self.target
+    }
+
+    /// The name of the file in which the log was recorded.
+    pub fn file(&self) -> &'static str {
+        self.file
+    }
+
+    /// The line number in the source file where the log was recorded.
+    pub fn line(&self) -> u32 {
+        self.line
+    }
+
+    /// The log [`Level`](crate::level::Level) describing the log event.
+    pub fn level(&self) -> Level {
+        self.level
+    }
+
+    /// The format string used in the logging macro.
+    ///
+    /// Note that serialize specifiers, i.e {:^}, should have been converted to
+    /// display specifiers, i.e. {}.
+    pub fn format_str(&self) -> &'static str {
+        self.format_str
+    }
+
+    /// The structured fields that were specified in the log.
+    pub fn fields(&self) -> &'static [&'static str] {
+        self.fields
     }
 }

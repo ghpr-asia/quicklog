@@ -20,9 +20,9 @@ use crate::{
 
 /// Contains data associated with each log entry.
 pub struct LogContext<'a> {
-    pub timestamp: u64,
-    pub metadata: &'a Metadata,
-    pub log_args: &'a [String],
+    timestamp: u64,
+    metadata: &'a Metadata,
+    log_args: &'a [String],
 }
 
 impl<'a> LogContext<'a> {
@@ -34,13 +34,23 @@ impl<'a> LogContext<'a> {
         }
     }
 
+    /// The UNIX timestamp that was recorded as part of the log message.
+    pub fn timestamp(&self) -> u64 {
+        self.timestamp
+    }
+
+    /// Log [`Metadata`].
+    pub fn metadata(&self) -> &'a Metadata {
+        self.metadata
+    }
+
     /// Constructs full format string, with structured fields appended.
     #[inline]
     pub fn full_fmt_str(&self) -> String {
         // Construct format string for prefixed (structured) fields and append
         // to original format string
-        let fields = self.metadata.fields;
-        let mut fmt_str = self.metadata.format_str.to_string();
+        let fields = self.metadata.fields();
+        let mut fmt_str = self.metadata.format_str().to_string();
         if !fmt_str.is_empty() && !fields.is_empty() {
             fmt_str.push(' ');
         }
@@ -175,8 +185,8 @@ impl std::fmt::Write for Writer {
 ///             writer,
 ///             "[CALLSITE: {}][{:?}][{}]{}",
 ///             self.callsite,
-///             ctx.timestamp,
-///             ctx.metadata.level,
+///             ctx.timestamp(),
+///             ctx.metadata().level(),
 ///             ctx.full_message(),
 ///         )
 ///     }
@@ -254,7 +264,7 @@ where
                 has_previous = true;
             }
 
-            write!(writer, "\"level\": \"{}\"", ctx.metadata.level)?;
+            write!(writer, "\"level\": \"{}\"", ctx.metadata.level())?;
         }
 
         if self.filename {
@@ -264,7 +274,7 @@ where
                 has_previous = true;
             }
 
-            write!(writer, "\"filename\": \"{}\"", ctx.metadata.file)?;
+            write!(writer, "\"filename\": \"{}\"", ctx.metadata.file())?;
         }
 
         if self.target {
@@ -274,7 +284,7 @@ where
                 has_previous = true;
             }
 
-            write!(writer, "\"filename\": \"{}\"", ctx.metadata.target)?;
+            write!(writer, "\"filename\": \"{}\"", ctx.metadata.target())?;
         }
 
         if self.line {
@@ -284,7 +294,7 @@ where
                 has_previous = true;
             }
 
-            write!(writer, "\"filename\": \"{}\"", ctx.metadata.line)?;
+            write!(writer, "\"filename\": \"{}\"", ctx.metadata.line())?;
         }
 
         // Not possible to log empty message, so will always have at least one field
@@ -293,7 +303,7 @@ where
         }
         write!(writer, "\"fields\":{{")?;
 
-        let num_field_args = ctx.metadata.fields.len();
+        let num_field_args = ctx.metadata.fields().len();
         let all_args = ctx.log_args;
         debug_assert!(all_args.len() >= num_field_args);
 
@@ -302,7 +312,7 @@ where
         let fields_args = &ctx.log_args[field_start_idx..];
         let fmt_args = &ctx.log_args[..field_start_idx];
 
-        let fmt_str = ctx.metadata.format_str;
+        let fmt_str = ctx.metadata.format_str();
         let has_fmt_str = !fmt_str.is_empty();
         if has_fmt_str {
             write!(writer, "\"message\":\"{}\"", fmt_str.format(fmt_args))?;
@@ -314,7 +324,7 @@ where
             }
             for (idx, (name, arg)) in ctx
                 .metadata
-                .fields
+                .fields()
                 .iter()
                 .zip(fields_args.iter())
                 .enumerate()
@@ -447,18 +457,18 @@ where
             write!(
                 writer,
                 "{}{}{}",
-                dimmed.paint(ctx.metadata.file),
+                dimmed.paint(ctx.metadata.file()),
                 dimmed.paint(":"),
                 if self.target { "" } else { " " }
             )?;
         }
 
-        let line_number = self.line.then_some(ctx.metadata.line);
+        let line_number = self.line.then_some(ctx.metadata.line());
         if self.target {
             write!(
                 writer,
                 "{}{}{}",
-                dimmed.paint(ctx.metadata.target),
+                dimmed.paint(ctx.metadata.target()),
                 dimmed.paint(":"),
                 if line_number.is_some() { "" } else { " " }
             )?;
@@ -482,17 +492,17 @@ where
             write!(
                 writer,
                 "{}:{}",
-                ctx.metadata.file,
+                ctx.metadata.file(),
                 if self.target { "" } else { " " }
             )?;
         }
 
-        let line_number = self.line.then_some(ctx.metadata.line);
+        let line_number = self.line.then_some(ctx.metadata.line());
         if self.target {
             write!(
                 writer,
                 "{}:{}",
-                ctx.metadata.target,
+                ctx.metadata.target(),
                 if line_number.is_some() { "" } else { " " }
             )?;
         }
@@ -737,7 +747,7 @@ where
         }
 
         self.format_timestamp(ctx.timestamp, writer)?;
-        self.format_level(ctx.metadata.level, writer)?;
+        self.format_level(ctx.metadata.level(), writer)?;
 
         self.format_metadata_and_msg(ctx, writer)
     }
