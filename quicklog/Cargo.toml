@@ -1,6 +1,6 @@
 [package]
 name = "quicklog"
-version = "0.1.19"
+version = "0.1.20"
 edition = "2021"
 description = "fast logging in Rust"
 documentation = "https://docs.rs/quicklog"
