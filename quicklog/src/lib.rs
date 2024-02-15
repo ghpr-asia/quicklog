@@ -4,7 +4,7 @@
 //!
 //! `quicklog` provides an API similar to that of the `log` crate through the five logging macros: [`trace!`], [`debug!`], [`info!`], [`warn!`] and [`error!`]. Log messages are encoded into a logging queue and decoded from the same queue when the user calls [`flush!`]. Note that messages are currently dropped if this queue is full (see [the below section](#configuration-of-max-logging-capacity) on how to adjust the queue capacity).
 //!
-//! Note that the [`init!`] macro needs to be called to initialize the logger before we can start logging.
+//! Note that the [`init!`] macro should be called *once* to initialize the logger before we can start logging. A set of configuration options can be passed to it to override the defaults (see [`Config`] or [Advanced usage](#advanced-usage) for more details).
 //!
 //! ## Example
 //!
@@ -125,7 +125,7 @@
 //! box (without needing to derive or manually implement `Serialize`):
 //!
 //! ```rust
-//! # use quicklog::{flush, info, init, with_flush, NoopFlusher};
+//! # use quicklog::{config, flush, info, init, NoopFlusher};
 //! #[derive(Copy, Clone, Debug)]
 //! struct CopyStruct {
 //!     a: usize,
@@ -134,8 +134,7 @@
 //! }
 //!
 //! # fn main() {
-//! init!();
-//! with_flush!(NoopFlusher);
+//! init!(config().flusher(NoopFlusher));
 //!
 //! let a = CopyStruct {
 //!     a: 0,
@@ -152,7 +151,7 @@
 //! However, note that [references implement `Copy` as well](https://doc.rust-lang.org/core/marker/trait.Copy.html#impl-Copy-for-%26T). If a reference is passed as a logging argument, `quicklog` will copy the *reference*, not the *underlying data*. This can cause some problems if one is not careful. For instance, the following might cause Undefined Behavior:
 //!
 //! ```rust no_run
-//! # use quicklog::{flush, info, init, with_flush, NoopFlusher};
+//! # use quicklog::{config, flush, info, init,  NoopFlusher};
 //! #[derive(Copy, Clone, Debug)]
 //! struct CopyStruct {
 //!     a: usize,
@@ -161,8 +160,7 @@
 //! }
 //!
 //! # fn main() {
-//! init!();
-//! with_flush!(NoopFlusher);
+//! init!(config().flusher(NoopFlusher));
 //!
 //! let a = CopyStruct {
 //!     a: 0,
@@ -184,7 +182,7 @@
 //! reference to a variable outside of the logging macro:
 //!
 //! ```rust
-//! # use quicklog::{flush, info, init, with_flush, NoopFlusher};
+//! # use quicklog::{config, flush, info, init,  NoopFlusher};
 //! # #[derive(Copy, Clone, Debug)]
 //! # struct CopyStruct {
 //! #     a: usize,
@@ -192,8 +190,7 @@
 //! #     c: i32,
 //! # }
 //! # fn main() {
-//! # init!();
-//! # with_flush!(NoopFlusher);
+//! # init!(config().flusher(NoopFlusher));
 //! # let a = CopyStruct {
 //! #     a: 0,
 //! #     b: "hello world",
@@ -250,6 +247,11 @@
 //!
 //! # Advanced usage
 //!
+//! This section covers some fairly advanced usage of `quicklog`. In general,
+//! for various configuration options, look at [`Config`] for modifiable
+//! settings. For other requirements, the below sections may cover your use
+//! case.
+//!
 //! ## Customizing log output location and format
 //!
 //! Two interfaces are provided for configuring both the logging destination and output format.
@@ -258,21 +260,20 @@
 //! ### `Flush`
 //!
 //! The [`Flush`] trait is exposed via the `quicklog-flush` crate and specifies a single log
-//! destination. An implementor of `Flush` can be set as the default by passing it to the [`with_flush!`] macro after
-//! calling `init!`.
+//! destination. An implementor of `Flush` can be set as the default by passing it to
+//! [`config`].
 //!
-//! By default, logs are output to stdout via the provided [`StdoutFlusher`]. One can easily save logs to a file by using the provided [`FileFlusher`] instead.
+//! By default, logs are output to stdout via the provided [`StdoutFlusher`]. To save logs to a
+//! file instead, pass a filename to `config`:
 //!
-//! #### Example
 //! ```rust no_run
-//! use quicklog::{flush, info, init, with_flush_into_file, FileFlusher};
+//! use quicklog::{config, flush, info, init, FileFlusher};
 //!
 //! # fn main() {
-//! init!();
-//!
 //! // by default, flushes to stdout via `StdoutFlusher`.
-//! // here we change the output location to a `quicklog.log` file
-//! with_flush_into_file!("quicklog.log");
+//! // here, we change the output location to a `quicklog.log` file
+//! init!(config().file_flusher("quicklog.log"));
+//!
 //! info!("hello world!");
 //!
 //! // flushes to file
@@ -285,8 +286,7 @@
 //! An implementor of [`PatternFormatter`] describes how the log line should be formatted. Apart
 //! from the main logging message, information such as [`Metadata`] about the logging callsite and
 //! the [`DateTime`](chrono::DateTime) are exposed through this trait. Similar to `Flush`, an
-//! implementor of `PatternFormatter` can be set as the default by passing it to the
-//! `with_formatter!` macro after calling `init!`.
+//! implementor of `PatternFormatter` can be set as the default by passing it to `config`.
 //!
 //! By default, logs have the `[utc datetime][log level]"message"` format:
 //! ```rust no_run
@@ -304,12 +304,13 @@
 //! # }
 //! ```
 //!
-//! #### Example
+//! An example of defining a custom output format:
+//!
 //! ```rust no_run
 //! use quicklog::fmt::{LogContext, PatternFormatter, Writer};
 //! use quicklog::Metadata;
 //! use quicklog::{DateTime, Utc};
-//! use quicklog::{flush, init, info, with_flush_into_file, with_formatter};
+//! use quicklog::{config, flush, init, info};
 //!
 //! pub struct PlainFormatter;
 //! impl PatternFormatter for PlainFormatter {
@@ -324,23 +325,15 @@
 //! }
 //!
 //! # fn main() {
-//! init!();
-//!
-//! // item goes into logging queue
-//! info!("hello world");
-//!
-//! // flushed into stdout: [utc datetime]"hello world"
-//! _ = flush!();
-//!
 //! // change log output format according to `PlainFormatter`
-//! // note that we can achieve the same effect with
-//! // `formatter().without_time().with_level(false).init()` instead of defining
-//! // this new `PlainFormatter`
-//! with_formatter!(PlainFormatter);
+//! // note that we can build an equivalent formatter using
+//! // `formatter().without_time().with_level(false).build()` instead of
+//! // defining this new `PlainFormatter`.
+//! // also, flush into a file path specified
+//! let config = config().formatter(PlainFormatter).file_flusher("logs/my_log.log");
+//! init!(config);
 //!
-//! // flush into a file path specified
-//! with_flush_into_file!("logs/my_log.log");
-//!
+//! // only the message, "shave yaks" should be shown in the log output
 //! info!("shave yaks");
 //!
 //! // flushed into file
@@ -393,12 +386,11 @@
 //!
 //! ### Example
 //! ```rust no_run
-//! use quicklog::{formatter, info, init};
+//! use quicklog::{config, formatter, info, init};
 //!
 //! # fn main() {
-//! init!();
 //! // use JSON formatting
-//! formatter().json().init();
+//! init!(config().formatter(formatter().json().build()));
 //!
 //! // {"timestamp":"1706065336","level":"INF","fields":{"message":"hello world, bye world","key1" = "123"}}
 //! info!(key1 = 123, "hello world, {:?}", "bye world");
@@ -534,14 +526,15 @@
 //! the capacity of the queue.
 //!
 //! The default size used for the backing queue used by `quicklog` is 1MB. To
-//! specify a different size, pass the desired size to the `init!` macro.
+//! specify a different size, configure the desired size through `config` and
+//! pass the final configuration to the `init!` macro.
 //! ```no_run
-//! # use quicklog::{init, info};
+//! # use quicklog::{config, init, info};
 //! # fn main() {
 //! let sz = 10 * 1024 * 1024;
 //!
 //! // 10MB
-//! init!(sz);
+//! init!(config().capacity(sz));
 //!
 //! let mut a = Vec::with_capacity(sz);
 //! for i in 0..sz {
@@ -594,7 +587,6 @@
 //! [`warn!`]: crate::warn
 //! [`error!`]: crate::error
 //! [`init!`]: crate::init
-//! [`with_flush!`]: crate::with_flush
 //! [`set_max_level`]: crate::set_max_level
 //! [`Level`]: crate::level::Level
 
@@ -676,6 +668,125 @@ pub fn set_max_level(level: LevelFilter) {
     logger().log_level = level;
 }
 
+/// Settings to be passed to the logger.
+///
+/// Meant to be passed to the [`init!`] macro to setup the default logger.
+///
+/// # Examples
+///
+/// Configuring a custom [`PatternFormatter`](crate::fmt::PatternFormatter)
+/// and flushing to a file:
+///
+/// ```rust
+/// use quicklog::{config, formatter, init};
+/// # fn main() {
+/// let config = config()
+///     .formatter(formatter().without_time().with_level(false).build())
+///     .file_flusher("mylog.log");
+/// init!(config);
+/// # }
+/// ```
+pub struct Config {
+    formatter: Box<dyn PatternFormatter>,
+    flusher: Box<dyn Flush>,
+    queue_capacity: usize,
+    #[cfg(feature = "target-filter")]
+    target_filter: Option<TargetFilter>,
+}
+
+impl Config {
+    /// Used to amend which [`PatternFormatter`](crate::fmt::PatternFormatter)
+    /// implementor is currently attached to the global
+    /// [`Quicklog`](crate::Quicklog) logger.
+    ///
+    /// By default, logs are formatted with the format `[utc
+    /// datetime][log level]"message`. See also the [top-level
+    /// documentation](crate#patternformatter) for information on defining your own
+    /// formatters.
+    pub fn formatter<P: PatternFormatter + 'static>(self, p: P) -> Self {
+        Self {
+            formatter: Box::new(p),
+            ..self
+        }
+    }
+
+    /// Used to amend which [`Flush`](crate::Flush) implementor is
+    /// currently attached to the global [`Quicklog`](crate::Quicklog) logger.
+    ///
+    /// By default, logs are flushed to stdout. See also the [top-level
+    /// documentation](crate#flush) for information on defining your own flushers.
+    pub fn flusher<F: Flush + 'static>(self, f: F) -> Self {
+        Self {
+            flusher: Box::new(f),
+            ..self
+        }
+    }
+
+    /// Overwrites the [`Flush`](crate::Flush)
+    /// implementor in [`Quicklog`](crate::Quicklog) with a
+    /// [`FileFlusher`](crate::FileFlusher) using the
+    /// provided file path.
+    ///
+    /// By default, logs are flushed to stdout. See also the [top-level
+    /// documentation](crate#flush) for information on defining your own flushers.
+    pub fn file_flusher(self, s: &'static str) -> Self {
+        Self {
+            flusher: Box::new(FileFlusher::new(s)),
+            ..self
+        }
+    }
+
+    /// Modifies the capacity of the logging queue (default is 1MB).
+    ///
+    /// Note that this size may be rounded up or adjusted
+    /// for better performance. See also the [top-level
+    /// documentation](crate#configuration-of-max-logging-capacity).
+    pub fn capacity(self, c: usize) -> Self {
+        Self {
+            queue_capacity: c,
+            ..self
+        }
+    }
+
+    /// Sets a [`TargetFilter`](crate::target::TargetFilter) on the global logger.
+    ///
+    /// This filters out logs at runtime based on their target and the log level
+    /// filter attached to it. Note that the `target-filter` feature must be
+    /// enabled for this to have any effect.
+    pub fn target_filter(self, _target_filter: TargetFilter) -> Self {
+        #[cfg(feature = "target-filter")]
+        {
+            Self {
+                target_filter: Some(_target_filter),
+                ..self
+            }
+        }
+
+        #[cfg(not(feature = "target-filter"))]
+        {
+            eprintln!("Called `target_filter` but `target-filter` feature not enabled; this setting will be ignored.");
+            self
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            formatter: Box::new(FormatterBuilder::default().build()),
+            flusher: Box::new(StdoutFlusher),
+            queue_capacity: MAX_LOGGER_CAPACITY,
+            #[cfg(feature = "target-filter")]
+            target_filter: None,
+        }
+    }
+}
+
+/// Initializes the default [`Config`] options.
+pub fn config() -> Config {
+    Config::default()
+}
+
 #[derive(Default)]
 pub(crate) struct Clock {
     anchor: Anchor,
@@ -701,24 +812,41 @@ pub struct Quicklog {
 }
 
 impl Quicklog {
-    fn new(logger_capacity: usize) -> Self {
-        let (sender, receiver) = Queue::new(logger_capacity);
+    fn new(config: Config) -> Self {
+        let (sender, receiver) = Queue::new(config.queue_capacity);
         let log_level = if cfg!(debug_assertions) {
             LevelFilter::Trace
         } else {
             LevelFilter::Info
         };
+        let writer = Writer::default().with_flusher(config.flusher);
 
         Quicklog {
-            writer: Writer::default(),
+            writer,
             log_level,
-            formatter: Box::new(FormatterBuilder::default().build()),
+            formatter: config.formatter,
             clock: Clock::default(),
             sender,
             receiver,
             fmt_buffer: Bump::with_capacity(MAX_FMT_BUFFER_CAPACITY),
             #[cfg(feature = "target-filter")]
-            target_filter: None,
+            target_filter: config.target_filter,
+        }
+    }
+
+    /// Eagerly initializes the global [`Quicklog`] logger.
+    /// Can be called through [`init!`] macro.
+    pub fn init() {
+        unsafe {
+            _ = LOGGER.get_or_init(|| Quicklog::new(Config::default()));
+        }
+    }
+
+    /// Eagerly initializes the global [`Quicklog`] logger.
+    /// Can be called through [`init!`] macro.
+    pub fn init_with_config(config: Config) {
+        unsafe {
+            _ = LOGGER.get_or_init(|| Quicklog::new(config));
         }
     }
 
@@ -727,19 +855,6 @@ impl Quicklog {
     #[inline(always)]
     pub fn is_level_enabled(&self, level: Level) -> bool {
         self.log_level.is_enabled(level)
-    }
-
-    #[inline]
-    pub fn with_target_filter(&mut self, _target_filter: TargetFilter) {
-        #[cfg(feature = "target-filter")]
-        {
-            self.target_filter = Some(_target_filter);
-        }
-
-        #[cfg(not(feature = "target-filter"))]
-        {
-            eprintln!("Called `with_target_filter` but `target-filter` feature not enabled; this setting will be ignored.");
-        }
     }
 
     /// Logs are enabled in the following priority order:
@@ -767,34 +882,6 @@ impl Quicklog {
 
             target_level.is_enabled(level)
         }
-    }
-
-    /// Eagerly initializes the global [`Quicklog`] logger.
-    /// Can be called through [`init!`] macro.
-    pub fn init() {
-        unsafe {
-            _ = LOGGER.get_or_init(|| Quicklog::new(MAX_LOGGER_CAPACITY));
-        }
-    }
-
-    /// Eagerly initializes the global [`Quicklog`] logger.
-    /// Can be called through [`init!`] macro.
-    pub fn init_with_capacity(capacity: usize) {
-        unsafe {
-            _ = LOGGER.get_or_init(|| Quicklog::new(capacity));
-        }
-    }
-
-    /// Sets which flusher to be used, used in [`with_flush!`].
-    #[doc(hidden)]
-    pub fn use_flush(&mut self, flush: Box<dyn Flush>) {
-        self.writer.with_flusher(flush);
-    }
-
-    /// Sets which flusher to be used, used in [`with_formatter!`].
-    #[doc(hidden)]
-    pub fn use_formatter(&mut self, formatter: Box<dyn PatternFormatter>) {
-        self.formatter = formatter;
     }
 
     fn flush_imp(&mut self) -> FlushReprResult {

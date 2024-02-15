@@ -15,7 +15,7 @@ use std::marker::PhantomData;
 
 use crate::{
     level::{Level, LevelFormat},
-    logger, Metadata,
+    Metadata,
 };
 
 /// Contains data associated with each log entry.
@@ -87,8 +87,8 @@ pub struct Writer {
 }
 
 impl Writer {
-    pub(crate) fn with_flusher(&mut self, flusher: Box<dyn Flush>) {
-        self.flusher = flusher;
+    pub(crate) fn with_flusher(self, flusher: Box<dyn Flush>) -> Self {
+        Self { flusher, ..self }
     }
 
     /// Writes buffer to underlying flusher.
@@ -169,8 +169,9 @@ impl std::fmt::Write for Writer {
 /// ```no_run
 /// use chrono::{DateTime, Utc};
 /// use quicklog::{
+///     config,
 ///     fmt::{LogContext, PatternFormatter, Writer},
-///     init, with_formatter, Metadata,
+///     init, Metadata,
 /// };
 ///
 /// use std::fmt::Write;
@@ -193,11 +194,10 @@ impl std::fmt::Write for Writer {
 /// }
 ///
 /// # fn main() {
-/// init!();
 /// let my_formatter = MyFormatter {
 ///     callsite: "main callsite",
 /// };
-/// with_formatter!(my_formatter);
+/// init!(config().formatter(my_formatter));
 /// // logging calls...
 /// # }
 /// ```
@@ -214,16 +214,15 @@ pub trait PatternFormatter {
 /// # Example
 ///
 /// ```no_run
-/// # use quicklog::{formatter, info, init, with_formatter};
+/// # use quicklog::{config, formatter, info, init};
 /// # fn main() {
-/// init!();
-/// formatter().json().init();
+/// init!(config().formatter(formatter().json().build()));
 ///
 /// // {"timestamp":"1706065336","level":"INF","fields":{"message":"some message: 5","hello": "123","world":"there"}}
 /// info!(hello = "123", world = "there", "some message: {}", 5);
 /// # }
 /// ```
-pub(crate) struct JsonFormatter<Tz: TimeZone> {
+pub struct JsonFormatter<Tz: TimeZone> {
     target: bool,
     filename: bool,
     line: bool,
@@ -407,7 +406,7 @@ impl Default for TimestampFormat {
 }
 
 /// A basic formatter implementing [`PatternFormatter`].
-pub(crate) struct QuickLogFormatter<Tz> {
+pub struct QuickLogFormatter<Tz> {
     target: bool,
     filename: bool,
     line: bool,
@@ -680,13 +679,7 @@ where
         }
     }
 
-    /// Finishes configuration process and sets global formatter
-    /// to this newly configured formatter.
-    pub fn init(self) {
-        logger().use_formatter(Box::new(self.build()));
-    }
-
-    pub(crate) fn build(self) -> QuickLogFormatter<Tz> {
+    pub fn build(self) -> QuickLogFormatter<Tz> {
         QuickLogFormatter {
             target: self.target,
             filename: self.filename,
@@ -703,13 +696,7 @@ impl<Tz: TimeZone + 'static> FormatterBuilder<Json, Tz>
 where
     Tz::Offset: std::fmt::Display,
 {
-    /// Finishes configuration process and sets global formatter
-    /// to this newly configured formatter.
-    pub fn init(self) {
-        logger().use_formatter(Box::new(self.build()));
-    }
-
-    pub(crate) fn build(self) -> JsonFormatter<Tz> {
+    pub fn build(self) -> JsonFormatter<Tz> {
         JsonFormatter {
             target: self.target,
             filename: self.filename,
@@ -764,11 +751,11 @@ where
 ///
 /// ```rust
 /// # fn main() {
-/// quicklog::init!();
-/// quicklog::formatter()
+/// let formatter = quicklog::formatter()
 ///     .without_time() // don't output timestamp
 ///     .with_level(false) // don't output level
-///     .init();
+///     .build();
+/// quicklog::init!(quicklog::config().formatter(formatter));
 /// # }
 /// ```
 ///
@@ -778,10 +765,10 @@ where
 ///
 /// ```rust
 /// # fn main() {
-/// quicklog::init!();
-/// quicklog::formatter()
+/// let formatter = quicklog::formatter()
 ///     .with_time_fmt("%+") // ISO 8601 format
-///     .init();
+///     .build();
+/// quicklog::init!(quicklog::config().formatter(formatter));
 /// # }
 /// ```
 #[inline]

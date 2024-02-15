@@ -1,6 +1,6 @@
 use quicklog::{
     debug, error, flush, info, level::LevelFilter, set_max_level, target::TargetFilter, trace,
-    warn, with_target_filter, FlushError,
+    warn, FlushError,
 };
 
 mod common;
@@ -20,15 +20,14 @@ mod my_module {
 
 #[test]
 fn target_filter() {
-    setup!();
-    // log all Info logs by default
-    set_max_level(LevelFilter::Info);
-
     // specific log filters
     let target_filter = TargetFilter::default()
         .with_target("filter::my_module", LevelFilter::Error)
         .with_target("inner", LevelFilter::Off);
-    with_target_filter!(target_filter);
+
+    setup!(target_filter = target_filter);
+    // log all Info logs by default
+    set_max_level(LevelFilter::Info);
 
     trace!("hello world");
     assert_eq!(flush!().unwrap_err(), FlushError::Empty);

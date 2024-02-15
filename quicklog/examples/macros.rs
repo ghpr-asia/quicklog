@@ -1,5 +1,5 @@
 use quicklog::{
-    debug, error, event, flush, formatter, info, init, serialize::Serialize, trace, warn,
+    config, debug, error, event, flush, formatter, info, init, serialize::Serialize, trace, warn,
     ReadResult,
 };
 
@@ -30,12 +30,13 @@ impl Serialize for S {
 }
 
 fn main() {
-    init!();
-    formatter()
-        .with_target(true)
-        .with_filename(true)
-        .with_line(true)
-        .init();
+    init!(config().formatter(
+        formatter()
+            .with_target(true)
+            .with_filename(true)
+            .with_line(true)
+            .build()
+    ));
 
     trace!("hello world! {} {} {}", 2, 3, 4);
     trace!("hello, world");

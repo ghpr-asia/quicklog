@@ -72,12 +72,11 @@ use nu_ansi_term::{Color, Style};
 /// ```rust
 /// use quicklog::level::{Level, LevelFilter};
 /// use quicklog::{
-///     debug, flush, info, init, set_max_level, trace, with_flush, FlushError, NoopFlusher,
+///     config, debug, flush, info, init, set_max_level, trace, FlushError, NoopFlusher,
 /// };
 ///
 /// # fn main() {
-/// init!();
-/// with_flush!(NoopFlusher);
+/// init!(config().flusher(NoopFlusher));
 /// assert!(Level::Trace < Level::Debug);
 /// assert!(Level::Error > Level::Info);
 ///

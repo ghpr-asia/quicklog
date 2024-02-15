@@ -1,68 +1,14 @@
-/// Used to amend which [`Flush`](crate::Flush) implementor is
-/// currently attached to the global [`Quicklog`](crate::Quicklog) logger.
-///
-/// By default, logs are flushed to stdout. See also the [top-level
-/// documentation](crate#flush) for information on defining your own flushers.
-#[macro_export]
-macro_rules! with_flush {
-    ($flush:expr) => {{
-        $crate::logger().use_flush(std::boxed::Box::new($flush))
-    }};
-}
-
-/// Used to amend which [`PatternFormatter`](crate::fmt::PatternFormatter)
-/// implementor is currently attached to the global
-/// [`Quicklog`](crate::Quicklog) logger.
-///
-/// By default, logs are formatted with the format `[utc
-/// datetime][log level]"message`. See also the [top-level
-/// documentation](crate#patternformatter) for information on defining your own
-/// formatters.
-#[macro_export]
-macro_rules! with_formatter {
-    ($formatter:expr) => {{
-        $crate::logger().use_formatter(std::boxed::Box::new($formatter))
-    }};
-}
-
-/// Sets a [`TargetFilter`](crate::target::TargetFilter) on the global logger.
-///
-/// This filters out logs at runtime based on their target and the log level
-/// filter attached to it.
-#[macro_export]
-macro_rules! with_target_filter {
-    ($filter:expr) => {{
-        $crate::logger().with_target_filter($filter)
-    }};
-}
-
-/// Overwrites the [`Flush`](crate::Flush)
-/// implementor in [`Quicklog`](crate::Quicklog) with a
-/// [`FileFlusher`](crate::FileFlusher) using the
-/// provided file path.
-///
-/// By default, logs are flushed to stdout. See also the [top-level
-/// documentation](crate#flush) for information on defining your own flushers.
-#[macro_export]
-macro_rules! with_flush_into_file {
-    ($file_path:expr) => {{
-        use $crate::FileFlusher;
-        let flusher = FileFlusher::new($file_path);
-        $crate::logger().use_flush(std::boxed::Box::new(flusher));
-    }};
-}
-
 /// Initializes Quicklog by calling [`Quicklog::init()`]. You should only need
 /// to call this once in the application.
 ///
-/// Can optionally be called with a `usize` argument indicating the desired size
-/// of the backing logging queue. Defaults to 1MB otherwise. Note that this
-/// size may be rounded up or adjusted for better performance. See also the
-/// [top-level documentation](crate#configuration-of-max-logging-capacity).
+/// Can optionally be called with a [`Config`](crate::Config) to pass custom options
+/// to the default logger.
 ///
 /// # Examples
 ///
-/// ```rust no_run
+/// Using default configuration:
+///
+/// ```rust
 /// use quicklog::init;
 ///
 /// # fn main() {
@@ -70,12 +16,15 @@ macro_rules! with_flush_into_file {
 /// # }
 /// ```
 ///
-/// ```rust no_run
-/// use quicklog::init;
+/// Using custom configuration:
+///
+/// ```rust
+/// use quicklog::{config, init};
 ///
 /// # fn main() {
-/// // 8MB
-/// init!(8 * 1024 * 1024);
+/// // 8MB queue capacity
+/// let config = config().capacity(8 * 1024 * 1024);
+/// init!(config);
 /// # }
 /// ```
 ///
@@ -85,13 +34,12 @@ macro_rules! init {
     () => {
         $crate::Quicklog::init();
     };
-    ($capacity:expr) => {
-        $crate::Quicklog::init_with_capacity($capacity);
+    ($config:expr) => {
+        $crate::Quicklog::init_with_config($config);
     };
 }
 
-/// Flushes a single log record onto an implementor of [`Flush`], which can be
-/// modified with [`with_flush!`] macro.
+/// Flushes a single log record onto an implementor of [`Flush`].
 ///
 /// [`Flush`]: `crate::Flush`
 ///

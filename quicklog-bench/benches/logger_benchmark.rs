@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use lazy_format::make_lazy_format;
-use quicklog::{init, with_flush, NoopFlusher};
+use quicklog::{config, init, NoopFlusher};
 use recycle_box::{coerce_box, RecycleBox};
 
 mod common;
@@ -158,8 +158,7 @@ fn bench_format_nested_struct(b: &mut Bencher) {
 }
 
 fn bench_logger_no_args(b: &mut Bencher) {
-    init!();
-    with_flush!(NoopFlusher);
+    init!(config().flusher(NoopFlusher));
     loop_with_cleanup!(
         b,
         quicklog::info!("The quick brown fox jumps over the lazy dog.")
@@ -171,8 +170,7 @@ fn bench_logger_serialize(b: &mut Bencher) {
         vec: [1; 100],
         some: "The quick brown fox jumps over the lazy dog",
     });
-    init!();
-    with_flush!(NoopFlusher);
+    init!(config().flusher(NoopFlusher));
     loop_with_cleanup!(b, quicklog::info!(bs, "Here's some text"));
 }
 
@@ -189,8 +187,7 @@ fn bench_logger_pass_by_ref(b: &mut Bencher) {
         vec: [1; 100],
         some: "The quick brown fox jumps over the lazy dog",
     });
-    init!();
-    with_flush!(NoopFlusher);
+    init!(config().flusher(NoopFlusher));
     loop_with_cleanup!(b, quicklog::info!(a = ?&bs, "Here's some text"));
 }
 

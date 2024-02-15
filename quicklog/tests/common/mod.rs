@@ -169,12 +169,30 @@ impl std::fmt::Display for SimpleStruct {
 
 #[macro_export]
 macro_rules! setup {
-    () => {
-        quicklog::init!();
+    (target_filter = $filter:expr) => {
         static mut VEC: Vec<String> = Vec::new();
         let vec_flusher = unsafe { common::VecFlusher::new(&mut VEC) };
-        quicklog::logger().use_flush(Box::new(vec_flusher));
-        quicklog::logger().use_formatter(Box::new(common::TestFormatter))
+        quicklog::init!(quicklog::config()
+            .formatter(common::TestFormatter)
+            .flusher(vec_flusher)
+            .target_filter($filter));
+    };
+    (formatter = $fmt:expr) => {
+        static mut VEC: Vec<String> = Vec::new();
+        let vec_flusher = unsafe { common::VecFlusher::new(&mut VEC) };
+        quicklog::init!(quicklog::config().formatter($fmt).flusher(vec_flusher));
+    };
+    ($config:expr) => {
+        static mut VEC: Vec<String> = Vec::new();
+        let vec_flusher = unsafe { common::VecFlusher::new(&mut VEC) };
+        quicklog::init!($config);
+    };
+    () => {
+        static mut VEC: Vec<String> = Vec::new();
+        let vec_flusher = unsafe { common::VecFlusher::new(&mut VEC) };
+        quicklog::init!(quicklog::config()
+            .formatter(common::TestFormatter)
+            .flusher(vec_flusher));
     };
 }
 

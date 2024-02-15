@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use delog::render::DefaultRenderer;
-use quicklog::{init, with_flush, NoopFlusher};
+use quicklog::{config, init, NoopFlusher};
 
 mod common;
 
@@ -83,8 +83,7 @@ fn bench_logger_nested(b: &mut Bencher) {
     for _ in 0..10 {
         nested.vec.push(bs)
     }
-    init!();
-    with_flush!(NoopFlusher);
+    init!(config().flusher(NoopFlusher));
     loop_with_cleanup!(b, black_box(quicklog::info!(nested, "Some data:")));
 }
 
@@ -97,8 +96,7 @@ fn bench_multiple_quicklog_nested(b: &mut Bencher) {
     for _ in 0..10 {
         nested.vec.push(bs)
     }
-    init!();
-    with_flush!(NoopFlusher);
+    init!(config().flusher(NoopFlusher));
     loop_with_cleanup!(b, {
         for _ in 0..10 {
             black_box(quicklog::info!(nested, "Some data:"));
@@ -115,8 +113,7 @@ fn bench_multiple_deferred_quicklog_nested(b: &mut Bencher) {
     for _ in 0..10 {
         nested.vec.push(bs)
     }
-    init!();
-    with_flush!(NoopFlusher);
+    init!(config().flusher(NoopFlusher));
     loop_with_cleanup!(b, {
         for _ in 0..10 {
             black_box(quicklog::info_defer!(nested, "Some data:"));

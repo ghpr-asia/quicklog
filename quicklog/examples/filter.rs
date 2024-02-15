@@ -1,6 +1,6 @@
 use quicklog::{
-    debug, error, flush, formatter, info, init, level::LevelFilter, set_max_level,
-    target::TargetFilter, trace, warn, with_target_filter,
+    config, debug, error, flush, formatter, info, init, level::LevelFilter, set_max_level,
+    target::TargetFilter, trace, warn,
 };
 
 mod my_module {
@@ -20,8 +20,11 @@ mod my_module {
 // Ensure that the `target-filter` feature is enabled to see the effects of
 // target-based filtering as well.
 fn main() {
-    init!();
-    formatter().with_target(true).init();
+    let target_filter =
+        TargetFilter::default().with_target("filter::my_module", LevelFilter::Error);
+    init!(config()
+        .formatter(formatter().with_target(true).build())
+        .target_filter(target_filter));
 
     // The default `LevelFilter` is `Trace`, so all logs will be recorded
     trace!("Trace");
@@ -44,12 +47,6 @@ fn main() {
 
     while let Ok(()) = flush!() {}
 
-    // Reset global default to `Info`
-    set_max_level(LevelFilter::Info);
-    let target_filter =
-        TargetFilter::default().with_target("filter::my_module", LevelFilter::Error);
-    with_target_filter!(target_filter);
-
     // with the `target-filter` feature, this should not be visible
     my_module::info_log_in_module();
 
@@ -57,7 +54,10 @@ fn main() {
     my_module::error_log_in_module();
 
     // remaining logs that don't have a target filter specified (i.e. in `filter` module) should
-    // still be logged
+    // still adhere to the global level, which is still `Error` in this case (as set by
+    // `set_max_level` above).
+    //
+    // hence, this should not be visible again
     info!("Info 3");
 
     while let Ok(()) = flush!() {}

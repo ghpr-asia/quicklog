@@ -1,13 +1,12 @@
-use quicklog::{event, formatter, info, with_formatter};
+use quicklog::{formatter, info};
 
-use common::{json::*, SerializeStruct, Something, TestFormatter};
+use common::{json::*, SerializeStruct, Something};
 
 mod common;
 
 #[test]
 fn macros_json() {
-    setup!();
-    formatter().json().init();
+    setup!(formatter = formatter().json().build());
 
     let s = SerializeStruct {
         symbol: String::from("Hello"),
@@ -36,25 +35,6 @@ fn macros_json() {
             ("eager.debug", &s1_debug),
             ("eager.display", &s1_display),
             ("eager.display.inner.field", s1.some_str)
-        ])
-    );
-
-    // Check `event` forces JSON formatting
-    with_formatter!(TestFormatter);
-    // Normal formatting
-    assert_message_equal!(
-        info!(s, "with fmt string and arg: {:^}", s),
-        "with fmt string and arg: Hello s=Hello"
-    );
-
-    // JSON formatting, using `event`
-    assert_json_fields!(event!(s), construct_json_fields(&[("s", "Hello")]));
-    assert_json_no_message!(event!(s));
-    assert_json_fields!(
-        event!(s, "with fmt string and arg: {:^}", s),
-        construct_json_fields(&[
-            ("message", "with fmt string and arg: Hello"),
-            ("s", "Hello")
         ])
     );
 }
