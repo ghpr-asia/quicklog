@@ -8,10 +8,7 @@ use quicklog_flush::{stdout_flusher::StdoutFlusher, Flush};
 #[cfg(feature = "ansi")]
 use nu_ansi_term::Style;
 
-use std::fmt::Write;
-
-#[cfg(not(feature = "ansi"))]
-use std::marker::PhantomData;
+use std::{fmt::Write, str::FromStr};
 
 use crate::{
     level::{Level, LevelFormat},
@@ -103,17 +100,11 @@ impl Writer {
         {
             if self.ansi {
                 let dimmed = Style::new().dimmed();
-                return write!(
-                    self,
-                    "{}[{}]{}",
-                    dimmed.prefix(),
-                    timestamp,
-                    dimmed.suffix(),
-                );
+                return write!(self, "{}{}{}", dimmed.prefix(), timestamp, dimmed.suffix());
             }
         }
 
-        write!(self, "[{}]", timestamp)
+        write!(self, "{}", timestamp)
     }
 
     /// Writes log level, formatting it with ANSI colors if the `ansi` feature
@@ -121,22 +112,13 @@ impl Writer {
     fn write_level(&mut self, level: Level) -> std::fmt::Result {
         #[cfg(feature = "ansi")]
         {
-            if self.ansi {
-                let dimmed = Style::new().dimmed();
-                return write!(
-                    self,
-                    "{}{}{}",
-                    dimmed.paint("["),
-                    LevelFormat::new(level, self.ansi),
-                    dimmed.paint("]")
-                );
-            }
-
-            write!(self, "[{}]", LevelFormat::new(level, false))
+            write!(self, "{}", LevelFormat::new(level, self.ansi))
         }
 
         #[cfg(not(feature = "ansi"))]
-        write!(self, "[{}]", LevelFormat::new(level))
+        {
+            write!(self, "{}", LevelFormat::new(level))
+        }
     }
 
     /// Clears write buffer.
@@ -412,6 +394,7 @@ pub struct QuickLogFormatter<Tz> {
     line: bool,
     level: bool,
     timestamp: Timestamp<Tz>,
+    pattern: Option<PatternizedString>,
     #[cfg(feature = "ansi")]
     ansi: bool,
 }
@@ -420,12 +403,38 @@ impl<Tz: TimeZone> QuickLogFormatter<Tz>
 where
     Tz::Offset: std::fmt::Display,
 {
+    /// Formats '[' if ANSI is enabled.
+    fn format_open_brace(&self, writer: &mut Writer) -> std::fmt::Result {
+        #[cfg(feature = "ansi")]
+        {
+            if self.ansi {
+                return write!(writer, "{}", Style::new().dimmed().paint("["));
+            }
+        }
+
+        write!(writer, "[")
+    }
+
+    /// Formats ']' if ANSI is enabled.
+    fn format_close_brace(&self, writer: &mut Writer) -> std::fmt::Result {
+        #[cfg(feature = "ansi")]
+        {
+            if self.ansi {
+                return write!(writer, "{}", Style::new().dimmed().paint("]"));
+            }
+        }
+
+        write!(writer, "]")
+    }
+
     /// Formats timestamp if it is enabled.
     fn format_timestamp(&self, timestamp: u64, writer: &mut Writer) -> std::fmt::Result {
         let time = self.timestamp.format_timestamp(timestamp)?;
 
         if let Some(t) = time {
+            self.format_open_brace(writer)?;
             writer.write_timestamp(t)?;
+            self.format_close_brace(writer)?;
         }
 
         Ok(())
@@ -437,7 +446,9 @@ where
             return Ok(());
         }
 
-        writer.write_level(level)
+        self.format_open_brace(writer)?;
+        writer.write_level(level)?;
+        self.format_close_brace(writer)
     }
 
     /// Formats remaining metadata-related information and log message.
@@ -516,6 +527,7 @@ where
 
 /// Default format.
 pub struct Normal {
+    pattern: Option<&'static str>,
     #[cfg(feature = "ansi")]
     ansi: bool,
 }
@@ -530,10 +542,7 @@ pub struct FormatterBuilder<F, Tz> {
     line: bool,
     level: bool,
     timestamp: Timestamp<Tz>,
-    #[cfg(feature = "ansi")]
     format: F,
-    #[cfg(not(feature = "ansi"))]
-    format: PhantomData<F>,
 }
 
 impl<F, Tz: TimeZone> FormatterBuilder<F, Tz>
@@ -651,16 +660,40 @@ where
                 "Called `with_ansi(true)` but `ansi` feature not enabled; this setting will be ignored."
             );
             }
-
-            self
         }
 
-        #[cfg(feature = "ansi")]
-        {
-            Self {
-                format: Normal { ansi },
-                ..self
-            }
+        Self {
+            format: Normal {
+                #[cfg(feature = "ansi")]
+                ansi,
+                pattern: self.format.pattern,
+            },
+            ..self
+        }
+    }
+
+    /// Overrides formatter with a custom pattern.
+    ///
+    /// # Examples
+    ///
+    /// ```rust no_run
+    /// # use quicklog::{config, info, init, formatter};
+    /// # fn main() {
+    /// let formatter = formatter().with_ansi(false).with_pattern("[%(time)] %(filename):%(level) %(message)").build();
+    /// init!(config().formatter(formatter));
+    ///
+    /// // should print something like "[1707880649] my_filename:INF Hello world"
+    /// info!("Hello world");
+    /// # }
+    /// ```
+    pub fn with_pattern(self, pattern: &'static str) -> Self {
+        Self {
+            format: Normal {
+                pattern: Some(pattern),
+                #[cfg(feature = "ansi")]
+                ansi: self.format.ansi,
+            },
+            ..self
         }
     }
 
@@ -672,20 +705,30 @@ where
             line: self.line,
             level: self.level,
             timestamp: self.timestamp,
-            #[cfg(feature = "ansi")]
             format: Json,
-            #[cfg(not(feature = "ansi"))]
-            format: PhantomData,
         }
     }
 
+    /// Completes configuration of formatter.
     pub fn build(self) -> QuickLogFormatter<Tz> {
+        let pattern = if let Some(pattern) = self.format.pattern {
+            PatternizedString::parse(pattern)
+                .map(Option::Some)
+                .unwrap_or_else(|e| {
+                    eprintln!("Ignoring provided pattern \"{}\": {}", pattern, e);
+                    None
+                })
+        } else {
+            None
+        };
+
         QuickLogFormatter {
             target: self.target,
             filename: self.filename,
             line: self.line,
             level: self.level,
             timestamp: self.timestamp,
+            pattern,
             #[cfg(feature = "ansi")]
             ansi: self.format.ansi,
         }
@@ -715,10 +758,11 @@ impl Default for FormatterBuilder<Normal, Utc> {
             line: false,
             level: true,
             timestamp: Timestamp::default(),
-            #[cfg(feature = "ansi")]
-            format: Normal { ansi: true },
-            #[cfg(not(feature = "ansi"))]
-            format: PhantomData,
+            format: Normal {
+                #[cfg(feature = "ansi")]
+                ansi: true,
+                pattern: None,
+            },
         }
     }
 }
@@ -733,10 +777,203 @@ where
             writer.ansi = self.ansi;
         }
 
+        if let Some(pattern) = self.pattern.as_ref() {
+            // Pattern provided did not contain any replaced identifiers
+            if pattern.idents.iter().all(Option::is_none) {
+                return write!(writer, "{}", pattern.fmt_str.as_str());
+            }
+
+            let pattern_str = pattern.fmt_str.as_str();
+            let mut pattern_idents_iter = pattern.idents.iter();
+
+            let mut current_idx = 0;
+            let mut chars = pattern.fmt_str.char_indices();
+            while let Some((idx, c)) = chars.next() {
+                if (c == '{' && chars.as_str().starts_with('{'))
+                    || (c == '}' && chars.as_str().starts_with('}'))
+                {
+                    // Escaped '{{' or '}}'
+                    chars.next();
+
+                    // Write everything up to this point and append escaped braces
+                    write!(writer, "{}{}", &pattern_str[current_idx..idx], c)?;
+                    current_idx = idx + 2;
+                    continue;
+                }
+
+                if c != '{' {
+                    continue;
+                }
+
+                // Assuming we found a valid, unescaped `{}`
+                // Write everything up to this point
+                debug_assert!(chars.as_str().starts_with('}'));
+                write!(writer, "{}", &pattern_str[current_idx..idx])?;
+                current_idx = idx + 2;
+
+                let Some(Some(pattern_ident)) = pattern_idents_iter.next() else {
+                    let end_idx = pattern_str.len();
+                    write!(
+                        writer,
+                        "{}",
+                        &pattern_str[current_idx.min(end_idx)..end_idx]
+                    )?;
+                    break;
+                };
+
+                match pattern_ident {
+                    PatternIdentifiers::Time => {
+                        Timestamp::<Utc>::default()
+                            .format_timestamp(ctx.timestamp())?
+                            .map(|ts| writer.write_timestamp(ts))
+                            .transpose()?;
+                    }
+                    PatternIdentifiers::Target => write!(writer, "{}", ctx.metadata.target())?,
+                    PatternIdentifiers::Filename => write!(writer, "{}", ctx.metadata.file())?,
+                    PatternIdentifiers::Line => write!(writer, "{}", ctx.metadata.line())?,
+                    PatternIdentifiers::Level => writer.write_level(ctx.metadata.level())?,
+                    PatternIdentifiers::Message => write!(writer, "{}", ctx.full_message())?,
+                }
+            }
+
+            writeln!(writer)?;
+
+            return Ok(());
+        }
+
         self.format_timestamp(ctx.timestamp, writer)?;
         self.format_level(ctx.metadata.level(), writer)?;
 
         self.format_metadata_and_msg(ctx, writer)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PatternIdentifiers {
+    Time,
+    Target,
+    Filename,
+    Line,
+    Level,
+    Message,
+}
+
+impl FromStr for PatternIdentifiers {
+    type Err = PatternParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "time" => Ok(Self::Time),
+            "target" => Ok(Self::Target),
+            "filename" => Ok(Self::Filename),
+            "line" => Ok(Self::Line),
+            "level" => Ok(Self::Level),
+            "message" => Ok(Self::Message),
+            _ => Err(PatternParseError::InvalidIdent),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PatternParseError {
+    MissingDelim,
+    RepeatedIdent,
+    InvalidIdent,
+    FmtSpecifier,
+}
+
+impl std::fmt::Display for PatternParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingDelim => write!(f, "no matching closing delimiter found"),
+            Self::RepeatedIdent => write!(f, "cannot use a formatting identifier more than once"),
+            Self::InvalidIdent => write!(f, "invalid pattern identifier found"),
+            Self::FmtSpecifier => {
+                write!(
+                    f,
+                    "found `{{}}` specifiers; these are explicitly not allowed. Use `{{{{}}}}` in the pattern string if you intend for `{{}}` to show up in the final output."
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct PatternizedString {
+    fmt_str: String,
+    idents: [Option<PatternIdentifiers>; 6],
+}
+
+impl PatternizedString {
+    /// Parses a format string containing `%(...)` pattern identifiers and
+    /// returns the transformed format string along with the identified
+    /// patterns.
+    ///
+    /// All matched `%(...)` will be replaced with a placeholder to be filled in
+    /// when performing the actual formatting later on.
+    fn parse(pattern: &str) -> Result<Self, PatternParseError> {
+        if pattern.char_indices().any(|(idx, c)| {
+            c == '{'
+            && pattern.get((idx + 1)..(idx + 2)) == Some("}")
+            // not part of an escaped right brace
+            && pattern.get((idx + 2)..(idx + 3)) != Some("}")
+        }) {
+            return Err(PatternParseError::FmtSpecifier);
+        }
+
+        let mut chars = pattern.char_indices();
+        let mut new_fmt_str = String::with_capacity(pattern.len());
+        let mut current_idx = 0;
+
+        let mut pattern_idents = [None; 6];
+        let mut pattern_idents_idx = 0;
+        while let Some((idx, _)) = chars.find(|(_, c)| c == &'%') {
+            // Copy up to this index into buffer
+            new_fmt_str.push_str(&pattern[current_idx..idx]);
+
+            // Advance to position on first character *inside* delimiters
+            let start_idx = idx + 2;
+
+            // Look for closing delimiter
+            let close_idx = chars
+                .find_map(|(idx, c)| (c == ')').then_some(idx))
+                .ok_or(PatternParseError::MissingDelim)?;
+
+            // Replace %(...) with the placeholder and advance to the character
+            // after it
+            new_fmt_str.push_str("{}");
+            current_idx = close_idx + 1;
+
+            // Parse the formatting identifier
+            let ident = &pattern[start_idx..close_idx];
+            let pattern_ident = PatternIdentifiers::from_str(ident)?;
+
+            if pattern_idents
+                .iter()
+                .any(|p| p.as_ref() == Some(&pattern_ident))
+            {
+                return Err(PatternParseError::RepeatedIdent);
+            }
+
+            pattern_idents[pattern_idents_idx] = Some(pattern_ident);
+            pattern_idents_idx += 1;
+        }
+
+        if current_idx == 0 {
+            return Ok(Self {
+                fmt_str: pattern.to_string(),
+                idents: pattern_idents,
+            });
+        }
+
+        // Add remaining string
+        let end_idx = pattern.len();
+        new_fmt_str.push_str(&pattern[current_idx.min(end_idx)..end_idx]);
+
+        Ok(Self {
+            fmt_str: new_fmt_str,
+            idents: pattern_idents,
+        })
     }
 }
 
@@ -780,7 +1017,7 @@ pub fn formatter() -> FormatterBuilder<Normal, Utc> {
 mod tests {
     use chrono::Utc;
 
-    use super::Timestamp;
+    use super::*;
 
     #[test]
     fn default_timestamp_fmt() {
@@ -794,5 +1031,101 @@ mod tests {
             .expect("display timestamp not enabled by default");
 
         assert_eq!(format!("{}", formatted), (now / 1_000_000_000).to_string());
+    }
+
+    #[test]
+    fn parse_custom_none() {
+        assert_eq!(
+            PatternizedString::parse("no identifiers used"),
+            Ok(PatternizedString {
+                fmt_str: "no identifiers used".into(),
+                idents: [None; 6]
+            })
+        )
+    }
+
+    #[test]
+    fn parse_custom_single() {
+        for ident in ["time", "target", "filename", "line", "level", "message"] {
+            let mut pattern = format!("some ident: %({})", ident);
+            pattern.push_str(" {{}}");
+
+            assert_eq!(
+                PatternizedString::parse(pattern.as_str()),
+                Ok(PatternizedString {
+                    fmt_str: "some ident: {} {{}}".into(),
+                    idents: [
+                        Some(PatternIdentifiers::from_str(ident).unwrap()),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ]
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn parse_custom_multiple() {
+        assert_eq!(
+            PatternizedString::parse(
+                "%(time) %(target) %(filename) %(line) %(level) %(message): hello world"
+            ),
+            Ok(PatternizedString {
+                fmt_str: "{} {} {} {} {} {}: hello world".into(),
+                idents: [
+                    Some(PatternIdentifiers::Time),
+                    Some(PatternIdentifiers::Target),
+                    Some(PatternIdentifiers::Filename),
+                    Some(PatternIdentifiers::Line),
+                    Some(PatternIdentifiers::Level),
+                    Some(PatternIdentifiers::Message),
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn fail_parse_custom_fmt_specifier() {
+        assert_eq!(
+            PatternizedString::parse("%(time) {}").unwrap_err(),
+            PatternParseError::FmtSpecifier
+        );
+
+        assert_eq!(
+            PatternizedString::parse("%(time) {}").unwrap_err(),
+            PatternParseError::FmtSpecifier
+        );
+    }
+
+    #[test]
+    fn fail_parse_custom_no_closing_delim() {
+        assert_eq!(
+            PatternizedString::parse("%(time hello world").unwrap_err(),
+            PatternParseError::MissingDelim
+        );
+    }
+
+    #[test]
+    fn fail_parse_custom_repeated_ident() {
+        assert_eq!(
+            PatternizedString::parse("%(time) %(filename) %(time) %(message)").unwrap_err(),
+            PatternParseError::RepeatedIdent
+        );
+    }
+
+    #[test]
+    fn fail_parse_custom_invalid_ident() {
+        assert_eq!(
+            PatternizedString::parse("%(invalid_ident) %(time)").unwrap_err(),
+            PatternParseError::InvalidIdent
+        );
+
+        assert_eq!(
+            PatternizedString::parse("%()").unwrap_err(),
+            PatternParseError::InvalidIdent
+        );
     }
 }
