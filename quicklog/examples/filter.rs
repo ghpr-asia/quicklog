@@ -1,6 +1,6 @@
 use quicklog::{
     config, debug, error, flush, formatter, info, init, level::LevelFilter, set_max_level,
-    target::TargetFilter, trace, warn,
+    target::TargetFilters, trace, warn,
 };
 
 mod my_module {
@@ -21,10 +21,10 @@ mod my_module {
 // target-based filtering as well.
 fn main() {
     let target_filter =
-        TargetFilter::default().with_target("filter::my_module", LevelFilter::Error);
+        TargetFilters::default().with_target("filter::my_module", LevelFilter::Error);
     init!(config()
         .formatter(formatter().with_target(true).build())
-        .target_filter(target_filter));
+        .target_filters(target_filter));
 
     // The default `LevelFilter` is `Trace`, so all logs will be recorded
     trace!("Trace");

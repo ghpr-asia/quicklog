@@ -560,7 +560,7 @@
 //! - `ansi`: enables ANSI colors and formatting. When enabled, will toggle on ANSI colors in the
 //! default formatter. See [`FormatterBuilder`] for configuration options. Disabled by default.
 //! - `target-filter`: enables target-based filtering. When enabled, allows the use of
-//! [`TargetFilter`] to filter out logs based on the logging target.
+//! [`TargetFilters`] to filter out logs based on the logging target.
 //!
 //! [`Serialize`]: serialize::Serialize
 //! [`Copy`]: std::marker::Copy
@@ -589,6 +589,7 @@
 //! [`init!`]: crate::init
 //! [`set_max_level`]: crate::set_max_level
 //! [`Level`]: crate::level::Level
+//! [`TargetFilters`]: crate::target::TargetFilters
 
 /// Macros for logging and modifying the currently used [`Flush`] handlers,
 /// along with some utilities.
@@ -616,9 +617,9 @@ use level::{Level, LevelFilter};
 use minstant::{Anchor, Instant};
 use serialize::DecodeFn;
 use std::cell::OnceCell;
-use target::TargetFilter;
+use target::TargetFilters;
 
-use crate::queue::FlushErrorRepr;
+use crate::{queue::FlushErrorRepr, target::Filter};
 
 pub use chrono::{DateTime, Utc};
 
@@ -665,7 +666,7 @@ pub fn logger() -> &'static mut Quicklog {
 /// example on how to use this function.
 #[inline(always)]
 pub fn set_max_level(level: LevelFilter) {
-    logger().log_level = level;
+    logger().filter.global = level;
 }
 
 /// Settings to be passed to the logger.
@@ -690,8 +691,7 @@ pub struct Config {
     formatter: Box<dyn PatternFormatter>,
     flusher: Box<dyn Flush>,
     queue_capacity: usize,
-    #[cfg(feature = "target-filter")]
-    target_filter: Option<TargetFilter>,
+    filter: Filter,
 }
 
 impl Config {
@@ -748,16 +748,28 @@ impl Config {
         }
     }
 
+    /// Modifies the maximum global logging [`LevelFilter`].
+    pub fn max_level(self, level: LevelFilter) -> Self {
+        Self {
+            filter: Filter {
+                global: level,
+                #[cfg(feature = "target-filter")]
+                target_filters: self.filter.target_filters,
+            },
+            ..self
+        }
+    }
+
     /// Sets a [`TargetFilter`](crate::target::TargetFilter) on the global logger.
     ///
     /// This filters out logs at runtime based on their target and the log level
     /// filter attached to it. Note that the `target-filter` feature must be
     /// enabled for this to have any effect.
-    pub fn target_filter(self, _target_filter: TargetFilter) -> Self {
+    pub fn target_filters(self, _target_filters: TargetFilters) -> Self {
         #[cfg(feature = "target-filter")]
         {
             Self {
-                target_filter: Some(_target_filter),
+                filter: self.filter.resolve_filters(_target_filters),
                 ..self
             }
         }
@@ -776,8 +788,7 @@ impl Default for Config {
             formatter: Box::new(FormatterBuilder::default().build()),
             flusher: Box::new(StdoutFlusher),
             queue_capacity: MAX_LOGGER_CAPACITY,
-            #[cfg(feature = "target-filter")]
-            target_filter: None,
+            filter: Filter::default(),
         }
     }
 }
@@ -801,36 +812,27 @@ impl Clock {
 /// Main logging handler.
 pub struct Quicklog {
     writer: Writer,
-    log_level: LevelFilter,
     formatter: Box<dyn PatternFormatter>,
     clock: Clock,
     sender: Producer,
     receiver: Consumer,
     fmt_buffer: Bump,
-    #[cfg(feature = "target-filter")]
-    target_filter: Option<TargetFilter>,
+    filter: Filter,
 }
 
 impl Quicklog {
     fn new(config: Config) -> Self {
         let (sender, receiver) = Queue::new(config.queue_capacity);
-        let log_level = if cfg!(debug_assertions) {
-            LevelFilter::Trace
-        } else {
-            LevelFilter::Info
-        };
         let writer = Writer::default().with_flusher(config.flusher);
 
         Quicklog {
             writer,
-            log_level,
             formatter: config.formatter,
             clock: Clock::default(),
             sender,
             receiver,
             fmt_buffer: Bump::with_capacity(MAX_FMT_BUFFER_CAPACITY),
-            #[cfg(feature = "target-filter")]
-            target_filter: config.target_filter,
+            filter: config.filter,
         }
     }
 
@@ -849,39 +851,13 @@ impl Quicklog {
             _ = LOGGER.get_or_init(|| Quicklog::new(config));
         }
     }
-
-    /// Logs with a [`Level`] greater than or equal to the returned [`LevelFilter`]
-    /// will be enabled, whereas the rest will be disabled.
-    #[inline(always)]
-    pub fn is_level_enabled(&self, level: Level) -> bool {
-        self.log_level.is_enabled(level)
-    }
-
     /// Logs are enabled in the following priority order:
     /// - If there is a [`LevelFilter`] set for the provided target, then we
     /// check against that.
     /// - Otherwise, fallback to the global (default) `LevelFilter`.
     #[inline(always)]
-    pub fn is_enabled(&self, _target: &str, level: Level) -> bool {
-        #[cfg(not(feature = "target-filter"))]
-        {
-            self.is_level_enabled(level)
-        }
-
-        #[cfg(feature = "target-filter")]
-        {
-            // Default to global level filter if overall target filter not set
-            // or filter not set for this specific target
-            let Some(target_level) = self
-                .target_filter
-                .as_ref()
-                .and_then(|filter| filter.target_level(_target))
-            else {
-                return self.is_level_enabled(level);
-            };
-
-            target_level.is_enabled(level)
-        }
+    pub fn is_enabled(&self, target: &str, level: Level) -> bool {
+        self.filter.is_enabled(target, level)
     }
 
     fn flush_imp(&mut self) -> FlushReprResult {

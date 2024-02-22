@@ -1,5 +1,5 @@
 use quicklog::{
-    debug, error, flush, info, level::LevelFilter, set_max_level, target::TargetFilter, trace,
+    debug, error, flush, info, level::LevelFilter, set_max_level, target::TargetFilters, trace,
     warn, FlushError,
 };
 
@@ -20,12 +20,17 @@ mod my_module {
 
 #[test]
 fn target_filter() {
+    // filter=warn is stricter than target filter below
+    // filter::my_module::info is less strict than target filter below
+    std::env::set_var("RUST_LOG", "filter=warn,filter::my_module:info");
+
     // specific log filters
-    let target_filter = TargetFilter::default()
+    let target_filters = TargetFilters::default()
+        .with_target("filter", LevelFilter::Info)
         .with_target("filter::my_module", LevelFilter::Error)
         .with_target("inner", LevelFilter::Off);
 
-    setup!(target_filter = target_filter);
+    setup!(target_filters = target_filters);
     // log all Info logs by default
     set_max_level(LevelFilter::Info);
 
@@ -34,8 +39,16 @@ fn target_filter() {
     debug!("hello world");
     assert_eq!(flush!().unwrap_err(), FlushError::Empty);
 
-    info!("hello world");
-    assert!(flush!().is_ok());
+    if cfg!(feature = "target-filter") {
+        // this should not be visible since RUST_LOG setting is stricter
+        // than the target_filter
+        info!("hello world");
+        assert_eq!(flush!().unwrap_err(), FlushError::Empty);
+    } else {
+        info!("hello world");
+        assert!(flush!().is_ok());
+    }
+
     warn!("hello world");
     assert!(flush!().is_ok());
     error!("hello world");
@@ -43,7 +56,8 @@ fn target_filter() {
 
     #[cfg(feature = "target-filter")]
     {
-        // this should not be visible
+        // this should not be visible even though RUST_LOG setting is info
+        // since target filter is stricter
         my_module::info_log_in_module();
         assert_eq!(flush!().unwrap_err(), FlushError::Empty);
 

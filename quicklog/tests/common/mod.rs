@@ -169,13 +169,13 @@ impl std::fmt::Display for SimpleStruct {
 
 #[macro_export]
 macro_rules! setup {
-    (target_filter = $filter:expr) => {
+    (target_filters = $filter:expr) => {
         static mut VEC: Vec<String> = Vec::new();
         let vec_flusher = unsafe { common::VecFlusher::new(&mut VEC) };
         quicklog::init!(quicklog::config()
             .formatter(common::TestFormatter)
             .flusher(vec_flusher)
-            .target_filter($filter));
+            .target_filters($filter));
     };
     (formatter = $fmt:expr) => {
         static mut VEC: Vec<String> = Vec::new();

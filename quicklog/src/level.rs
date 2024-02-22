@@ -59,6 +59,12 @@
 #[cfg(feature = "ansi")]
 use nu_ansi_term::{Color, Style};
 
+#[cfg(debug_assertions)]
+pub(crate) const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Trace;
+
+#[cfg(not(debug_assertions))]
+pub(crate) const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Info;
+
 /// Verbosity of a logging event.
 ///
 /// Note that `Trace` is considered to have the lowest level, and
@@ -241,14 +247,14 @@ impl std::str::FromStr for LevelFilter {
     type Err = LogLevelParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_uppercase().as_str() {
-            "TRC" => Ok(Self::Trace),
-            "DBG" => Ok(Self::Debug),
-            "INF" => Ok(Self::Info),
-            "WRN" => Ok(Self::Warn),
-            "ERR" => Ok(Self::Error),
-            "OFF" => Ok(Self::Off),
-            "EVT" => Ok(Self::Event),
+        match s.to_lowercase().as_str() {
+            "trc" | "trace" | "0" => Ok(Self::Trace),
+            "dbg" | "debug" | "1" => Ok(Self::Debug),
+            "inf" | "info" | "2" => Ok(Self::Info),
+            "wrn" | "warn" | "3" => Ok(Self::Warn),
+            "err" | "error" | "4" => Ok(Self::Error),
+            "evt" | "event" | "5" => Ok(Self::Event),
+            "off" => Ok(Self::Off),
             _ => Err(LogLevelParseError),
         }
     }
