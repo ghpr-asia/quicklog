@@ -32,6 +32,7 @@ delog = "0.1.6"
 tracing = "0.1.37"
 tracing-appender = "0.2.2"
 tracing-subscriber = "0.3.16"
+recycle-box = { version = "0.2.0"}
 
 [[bench]]
 name = "logger_benchmark"
