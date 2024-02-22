@@ -674,6 +674,25 @@ where
 
     /// Overrides formatter with a custom pattern.
     ///
+    /// This is inspired by `strftime`-like syntax used in datetime formatting, for instance
+    /// chrono's [`strftime`](chrono::format::strftime). Note that there are some slight syntax
+    /// differences: we further require the desired specifier to be wrapped in parentheses. For
+    /// instance, `%(time)`, `%(line)`.
+    ///
+    /// The full list of supported specifiers are:
+    ///
+    /// | Log field | Specifier |
+    /// | - | - |
+    /// | (UNIX) timestamp | `%(time)` |
+    /// | Logging target | `%(target)` |
+    /// | Filename | `%(filename)` |
+    /// | Source line | `%(line)` |
+    /// | Log level | `%(level)` |
+    /// | Main formatted log message | `%(message)` |
+    ///
+    /// Note that every specifier can only be used once. Attempting to use a specifier more than
+    /// once or provided an unsupported specifier will lead to the pattern being ignored.
+    ///
     /// # Examples
     ///
     /// ```rust no_run

@@ -1,5 +1,18 @@
 //! Low-latency single-threaded logging library.
 //!
+//! # Table of Contents
+//!
+//! - [Usage](#usage)
+//! - [Core concept: Serialize](#core-concept-serialize)
+//!     - [Caveats](#caveats)
+//! - [Advanced usage](#advanced-usage)
+//!     - [Logger configuration](#logger-configuration)
+//!     - [Log filtering](#log-filtering)
+//!     - [JSON logging](#json-logging)
+//!     - [Deferred logging](#deferred-logging)
+//!         - [Caveats](#caveats-1)
+//! - [Feature flags](#feature-flags)
+//!
 //! # Usage
 //!
 //! `quicklog` provides an API similar to that of the `log` crate through the five logging macros: [`trace!`], [`debug!`], [`info!`], [`warn!`] and [`error!`]. Log messages are encoded into a logging queue and decoded from the same queue when the user calls [`flush!`]. Note that messages are currently dropped if this queue is full (see [the below section](#configuration-of-max-logging-capacity) on how to adjust the queue capacity).
@@ -252,23 +265,24 @@
 //! settings. For other requirements, the below sections may cover your use
 //! case.
 //!
-//! ## Customizing log output location and format
+//! ## Logger configuration
 //!
-//! Two interfaces are provided for configuring both the logging destination and output format.
-//! They are the [`Flush`] and [`PatternFormatter`] traits respectively.
+//! In general, the various configuration options available are exposed via the [`Config`] type,
+//! which can be initialized using the [`config`] function.
+//! Here, we go through a few of the common ones.
 //!
-//! ### `Flush`
+//! ### Logging destination
 //!
-//! The [`Flush`] trait is exposed via the `quicklog-flush` crate and specifies a single log
-//! destination. An implementor of `Flush` can be set as the default by passing it to
-//! [`config`].
+//! To configure the logging destination, whether it be to stdout, a file or some in-memory buffer,
+//! use the [`Flush`] trait. It is exposed via the `quicklog-flush` crate and specifies a single
+//! log destination. By default, logs are output to stdout via the provided [`StdoutFlusher`]. Any implementor of `Flush` can be set as the default by passing it to `config().flusher(...)`.
 //!
-//! By default, logs are output to stdout via the provided [`StdoutFlusher`]. To save logs to a
-//! file instead, pass a filename to `config`:
+//! #### Examples
+//!
+//! Logging to a file:
 //!
 //! ```rust no_run
 //! use quicklog::{config, flush, info, init, FileFlusher};
-//!
 //! # fn main() {
 //! // by default, flushes to stdout via `StdoutFlusher`.
 //! // here, we change the output location to a `quicklog.log` file
@@ -281,28 +295,86 @@
 //! # }
 //! ```
 //!
-//! ### `PatternFormatter`
-//!
-//! An implementor of [`PatternFormatter`] describes how the log line should be formatted. Apart
-//! from the main logging message, information such as [`Metadata`] about the logging callsite and
-//! the [`DateTime`](chrono::DateTime) are exposed through this trait. Similar to `Flush`, an
-//! implementor of `PatternFormatter` can be set as the default by passing it to `config`.
-//!
-//! By default, logs have the `[utc datetime][log level]"message"` format:
+//! Logging to in-memory buffer:
 //! ```rust no_run
-//! use quicklog::{info, Serialize};
+//! use quicklog::{config, flush, info, init, Flush};
 //!
-//! #[derive(Serialize)]
-//! struct S {
-//!     i: usize,
+//! struct MemBuf(Vec<String>);
+//!
+//! impl Flush for MemBuf {
+//!     fn flush_one(&mut self, display: String) {
+//!         self.0.push(display);
+//!     }
 //! }
-//! # fn main() {
-//! let some_struct = S { i: 0 };
 //!
-//! // [1706065336][INF]Some data: a=S { i: 0 }
-//! info!(a = some_struct, "Some data:")
+//! # fn main() {
+//! let buf = MemBuf(Vec::with_capacity(1024));
+//! init!(config().flusher(buf));
+//!
+//! info!("hello world!");
+//!
+//! _ = flush!();
 //! # }
 //! ```
+//!
+//! ### Logging format
+//!
+//! The default log output follows a format like:
+//!
+//! ```no_run
+//! // [1706065336][INF]hello world, bye world key1=123
+//! quicklog::info!(key1 = 123, "hello world, {:?}", "bye world")
+//! ```
+//! More specifically, the format follows a `[epoch timestamp (secs)][log level]message
+//! field1=value1 field2=value2 ...` convention.
+//!
+//! There are a few ways of configuring this format. Ranging from least flexible to the most flexible, they are:
+//!
+//! | Method | Entry point | Use case |
+//! | - | - | - |
+//! | [`FormatterBuilder`] | [`formatter()`] | You want to toggle on/off some log fields, but primarily still sticking to the order of fields output by the [default formatter](crate::fmt::QuickLogFormatter). |
+//! | [`with_pattern`](FormatterBuilder::with_pattern) | [`formatter().with_pattern()`](FormatterBuilder::with_pattern) | You want to customize the ordering of log fields and the final message. |
+//! | [`PatternFormatter`] | Trait implementation | You want a completely custom format with the ability to add extra user-defined information. |
+//!
+//! In general, all of these methods go through [`Config::formatter`] in order to be set as the default
+//! logging formatter.
+//!
+//! #### [`FormatterBuilder`]
+//!
+//! The display of the main logging fields (e.g. timestamp, source location) can be toggled on/off
+//! and customized slightly via the `FormatterBuilder` type. The builder can be initialized through
+//! the `formatter()` function.
+//!
+//! For instance, to configure ISO8601 date formatting, turn on source line location and disable
+//! ANSI formatting (enabled by default when the `ansi` feature flag is enabled):
+//! ```no_run
+//! use quicklog::{config, formatter, info, init};
+//!
+//! # fn main() {
+//! let formatter = formatter()
+//!     .with_line(true)
+//!     .with_ansi(false)
+//!     .with_time_fmt("%+")
+//!     .build();
+//! init!(config().formatter(formatter));
+//! // log with new format
+//! info!("hello world");
+//! # }
+//! ```
+//!
+//! #### `with_pattern`
+//!
+//! See the [function documentation](FormatterBuilder::with_pattern) for usage details.
+//!
+//! #### `PatternFormatter`
+//!
+//! An implementor of [`PatternFormatter`] describes how the log line should be formatted. Apart
+//! from the main logging message, information such as [`Metadata`] about the logging callsite. Any implementor of
+//! `PatternFormatter` can be set as the default by passing it to `config().formatter(...)`.
+//!
+//! This trait provides more flexibility than the `with_pattern` interface since one can use
+//! any field from `Metadata` freely in the log format. Also, one can define formatters which hold
+//! extra data themselves to be injected in the final message.
 //!
 //! An example of defining a custom output format:
 //!
@@ -312,7 +384,9 @@
 //! use quicklog::{DateTime, Utc};
 //! use quicklog::{config, flush, init, info};
 //!
-//! pub struct PlainFormatter;
+//! pub struct PlainFormatter {
+//!     custom_number: usize
+//! }
 //! impl PatternFormatter for PlainFormatter {
 //!     fn custom_format(
 //!         &self,
@@ -320,21 +394,14 @@
 //!         writer: &mut Writer,
 //!     ) -> std::fmt::Result {
 //!         use std::fmt::Write;
-//!         writeln!(writer, "{}", ctx.full_message())
+//!         writeln!(writer, "[{}]{}", self.custom_number, ctx.full_message())
 //!     }
 //! }
 //!
 //! # fn main() {
-//! // change log output format according to `PlainFormatter`
-//! // note that we can build an equivalent formatter using
-//! // `formatter().without_time().with_level(false).build()` instead of
-//! // defining this new `PlainFormatter`.
-//! // also, flush into a file path specified
-//! let config = config().formatter(PlainFormatter).file_flusher("logs/my_log.log");
+//! let formatter = PlainFormatter { custom_number: 420 };
+//! let config = config().formatter(formatter).file_flusher("logs/my_log.log");
 //! init!(config);
-//!
-//! // only the message, "shave yaks" should be shown in the log output
-//! info!("shave yaks");
 //!
 //! // flushed into file
 //! _ = flush!();
@@ -377,6 +444,38 @@
 //! Note that compile-time filtering takes precedence over run-time filtering, since it influences whether `quicklog` will generate and expand the macro at build time in the first place. For instance, if we set `QUICKLOG_MIN_LEVEL=ERR`, then in the above program, the first `info("hello world")` will not be recorded at all. Also note that any filters set at runtime through `set_max_level` will have no effect if `QUICKLOG_MIN_LEVEL` is defined.
 //!
 //! Clearly, compile-time filtering is more restrictive than run-time filtering. However, performance-sensitive applications may still consider compile-time filtering since it avoids both a branch check and code generation for logs that one wants to filter out completely, which can have positive performance impact. But as always, remember to profile and benchmark your application to see that it actually gives the results you want.
+//!
+//! ### Target-specific filtering
+//!
+//! One can also filter logs on a target-by-target basis. To do this, either create a [`TargetFilters`] and setup it up via `Config`:
+//!
+//! ```no_run
+//! use quicklog::{config, debug, info, init, level::LevelFilter, target::TargetFilters};
+//!
+//! # fn main() {
+//! let target_filters = TargetFilters::default()
+//!     .with_target("filter", LevelFilter::Info)
+//!     .with_target("inner", LevelFilter::Off);
+//! init!(config().target_filters(target_filters));
+//!
+//! // not visible
+//! info!(target: "inner", "not visible");
+//!
+//! // assuming current module is `filter`, visible
+//! info!("visible");
+//! // assuming current module is `filter`, not visible
+//! debug!("not visible");
+//! # }
+//! ```
+//!
+//! Or set the `RUST_LOG` environment variable *before calling `init`*. The accepted syntax for
+//! `RUST_LOG` is similar to that accepted by the [`env_logger`](https://docs.rs/env_logger/latest/env_logger/#enabling-logging) crate.
+//!
+//! Note that in the event that *both* [`TargetFilters`] and `RUST_LOG` are used, and a single
+//! target has a level filter set via both methods, the *stricter* level will be taken. For
+//! instance, given `RUST_LOG=my_module=info` and
+//! `TargetFilters::default().with_target("my_module", LevelFilter::Off)` is configured, the final level will be
+//! [`LevelFilter::Off`].
 //!
 //! ## JSON logging
 //!
@@ -518,40 +617,6 @@
 //! Note that `commit_on_scope_end!` implicitly does the same thing as `commit!`, but *at the end of the
 //! current scope*. So in most cases you would probably want to put it at the top-level/outermost scope
 //! within a function.
-//!
-//! ## Configuration of max logging capacity
-//!
-//! As mentioned, log messages will be dropped if they are too big to be written
-//! into the backing logging queue. To avoid this, one might consider increasing
-//! the capacity of the queue.
-//!
-//! The default size used for the backing queue used by `quicklog` is 1MB. To
-//! specify a different size, configure the desired size through `config` and
-//! pass the final configuration to the `init!` macro.
-//! ```no_run
-//! # use quicklog::{config, init, info};
-//! # fn main() {
-//! let sz = 10 * 1024 * 1024;
-//!
-//! // 10MB
-//! init!(config().capacity(sz));
-//!
-//! let mut a = Vec::with_capacity(sz);
-//! for i in 0..sz {
-//!     a[i] = i;
-//! }
-//!
-//! // log big struct using `Serialize`
-//! info!(a, "inspecting some big data");
-//! # }
-//! ```
-//!
-//! Note that this size may be rounded up or adjusted for better performance.
-//! `quicklog` does not currently support unbounded logging (i.e. automatically
-//! resizing of logging queue) or blocking when the queue is full. It is
-//! advisable to ensure that either `flush!` is called regularly to avoid
-//! accumulating lots of messages which might saturate the queue, or adjusting
-//! the size of the queue during initialization to a safe limit.
 //!
 //! # Feature Flags
 //!
@@ -738,9 +803,33 @@ impl Config {
 
     /// Modifies the capacity of the logging queue (default is 1MB).
     ///
-    /// Note that this size may be rounded up or adjusted
-    /// for better performance. See also the [top-level
-    /// documentation](crate#configuration-of-max-logging-capacity).
+    /// Note that this size may be rounded up or adjusted for better
+    /// performance. We do not currently support unbounded logging (i.e.
+    /// automatically resizing of logging queue) or blocking when the queue
+    /// is full. It is advisable to ensure that either [`flush!`] is called
+    /// regularly to avoid accumulating lots of messages which might saturate
+    /// the queue, or adjusting the size of the queue during initialization to a
+    /// safe limit.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use quicklog::{config, init, info};
+    /// # fn main() {
+    /// let sz = 10 * 1024 * 1024;
+    ///
+    /// // 10MB
+    /// init!(config().capacity(sz));
+    ///
+    /// let mut a = Vec::with_capacity(sz);
+    /// for i in 0..sz {
+    ///     a[i] = i;
+    /// }
+    ///
+    /// // log big struct using `Serialize`
+    /// info!(a, "inspecting some big data");
+    /// # }
+    /// ```
     pub fn capacity(self, c: usize) -> Self {
         Self {
             queue_capacity: c,
