@@ -10,10 +10,16 @@ keywords = ["quicklog", "logger"]
 workspace = "../"
 readme = "../README.md"
 build = "build.rs"
+# passing all test cases through trybuild
+autotests = false
 
 [lib]
 name = "quicklog"
 path = "src/lib.rs"
+
+[[test]]
+name = "tests"
+path = "tests/ui.rs"
 
 [dependencies]
 lazy_format = "2.0.0"
@@ -33,6 +39,7 @@ tracing = "0.1.37"
 tracing-appender = "0.2.2"
 tracing-subscriber = "0.3.16"
 recycle-box = { version = "0.2.0"}
+trybuild = "1.0.85"
 
 [[bench]]
 name = "logger_benchmark"
