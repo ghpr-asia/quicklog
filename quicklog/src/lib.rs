@@ -206,9 +206,10 @@
 
 use heapless::spsc::Queue;
 use level::Level;
-use once_cell::unsync::{Lazy, OnceCell};
+use once_cell::unsync::Lazy;
 use quanta::Instant;
 use serialize::buffer::ByteBuffer;
+use std::cell::OnceCell;
 use std::fmt::Display;
 
 pub use std::{file, line, module_path};
