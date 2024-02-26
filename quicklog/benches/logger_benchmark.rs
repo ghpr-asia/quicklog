@@ -246,7 +246,7 @@ fn bench_logger_serialize(b: &mut Bencher) {
         some: "The quick brown fox jumps over the lazy dog",
     });
     with_flush!(NoopFlusher);
-    loop_with_cleanup!(b, quicklog::info!("Here's some text {}", ^bs));
+    loop_with_cleanup!(b, quicklog::info!(^bs, "Here's some text"));
 }
 
 fn bench_logger_and_flush(b: &mut Bencher) {
@@ -254,7 +254,7 @@ fn bench_logger_and_flush(b: &mut Bencher) {
         vec: [1; 100],
         some: "the quick brown fox jumps over the lazy dog",
     });
-    loop_with_cleanup!(b, quicklog::info!("Here's some text {:?}", bs));
+    loop_with_cleanup!(b, quicklog::info!(?bs, "Here's some text"));
 }
 
 fn bench_logger_pass_by_ref(b: &mut Bencher) {
@@ -263,7 +263,7 @@ fn bench_logger_pass_by_ref(b: &mut Bencher) {
         some: "The quick brown fox jumps over the lazy dog",
     });
     with_flush!(NoopFlusher);
-    loop_with_cleanup!(b, quicklog::info!("Here's some text {:?}", &bs));
+    loop_with_cleanup!(b, quicklog::info!(?&bs, "Here's some text"));
 }
 
 fn bench_loggers(c: &mut Criterion) {
