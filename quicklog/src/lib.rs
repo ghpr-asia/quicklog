@@ -326,7 +326,7 @@ impl Quicklog {
         self.formatter = formatter
     }
 
-    /// Sets which flusher to be used, used in [`with_clock!`]
+    /// Sets which clock to be used, used in [`with_clock!`]
     #[doc(hidden)]
     pub fn use_clock(&mut self, clock: Box<dyn Clock>) {
         self.clock = clock

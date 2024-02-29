@@ -109,6 +109,8 @@ fn main() {
 }
 ```
 
+More usage examples are available [here](quicklog/examples/macros.rs).
+
 ## Benchmark
 
 Measurements are made on a 2020 16 core M1 Macbook Air with 16 GB RAM.
