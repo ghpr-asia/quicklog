@@ -1,17 +1,28 @@
 use quicklog::{
-    debug, error, flush_all, info, init, trace, warn, with_flush, with_formatter, LogRecord,
-    PatternFormatter,
+    debug, error, flush_all, info, init,
+    serialize::{encode_i32, Serialize, Store},
+    trace, warn, with_flush, with_formatter, LogRecord, PatternFormatter,
 };
 use quicklog_flush::stdout_flusher::StdoutFlusher;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct S {
-    i: u32,
+    i: i32,
 }
 
 impl std::fmt::Display for S {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", self.i))
+    }
+}
+
+impl Serialize for S {
+    fn encode(&self, write_buf: &'static mut [u8]) -> Store {
+        encode_i32(self.i, write_buf)
+    }
+
+    fn buffer_size_required(&self) -> usize {
+        std::mem::size_of_val(&self.i)
     }
 }
 
@@ -43,8 +54,8 @@ fn main() {
     error!("hello world! {}", 2);
 
     let mut s_0 = S { i: 0 };
-    let s_1 = S { i: 1 };
-    let s_2 = S { i: 2 };
+    let mut s_1 = S { i: 1 };
+    let mut s_2 = S { i: 2 };
     let s_3 = S { i: 3 };
     let s_4 = S { i: 4 };
     let s_5 = S { i: 5 };
@@ -54,17 +65,38 @@ fn main() {
     let s_9 = S { i: 9 };
     let s_10 = S { i: 10 };
 
+    // Logging multiple structs
     info!(
         "{} {} {} {} {} {} {} {} {} {} {}",
         s_0, s_1, s_2, s_3, s_4, s_5, s_6, s_7, s_8, s_9, s_10
     );
 
     s_0.i = 42;
+    s_1.i = 420;
+    s_2.i = 4200;
 
+    // Logging mutated structs -- copies and captures new data
     info!(
         "{} {} {} {} {} {} {} {} {} {} {}",
         s_0, s_1, s_2, s_3, s_4, s_5, s_6, s_7, s_8, s_9, s_10
     );
+
+    // Debug information
+    info!(?s_0);
+
+    // Debug information with custom name
+    info!(my_struct = ?s_0);
+
+    // Debug, display, serialize all together
+    info!(debug_impl = ?s_0, display_impl = %s_0, serialize_impl = ^s_0);
+
+    // Debug/display/serialize with format string
+    info!(debug_impl = ?s_0, "Display struct: {}", s_0);
+    info!(display_impl = %s_0, "Debug and display structs: {:?} {};", s_0, s_0);
+
+    // Named parameters
+    info!(debug_impl = ?s_0, "My struct {a}", a = s_0);
+    info!(debug_impl = ?s_0, "My struct {s_0:?}");
 
     flush_all!();
 }
