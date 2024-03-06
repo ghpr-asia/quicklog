@@ -1,6 +1,6 @@
 use quicklog::{
     debug, error, flush_all, info, init,
-    serialize::{encode_i32, Serialize, Store},
+    serialize::{Serialize, Store},
     trace, warn, with_flush, with_formatter, LogRecord, PatternFormatter,
 };
 use quicklog_flush::stdout_flusher::StdoutFlusher;
@@ -18,7 +18,7 @@ impl std::fmt::Display for S {
 
 impl Serialize for S {
     fn encode<'buf>(&self, write_buf: &'buf mut [u8]) -> Store<'buf> {
-        encode_i32(self.i, write_buf)
+        self.i.encode(write_buf)
     }
 
     fn buffer_size_required(&self) -> usize {
