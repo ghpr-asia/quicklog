@@ -27,7 +27,7 @@ cargo add quicklog
 ```toml
 # Cargo.toml
 [dependencies]
-quicklog = "0.1.18"
+quicklog = "0.2"
 # ...
 ```
 
