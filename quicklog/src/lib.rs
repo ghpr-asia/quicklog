@@ -230,7 +230,7 @@ include!("constants.rs");
 /// `constants.rs` is generated from `build.rs`, should not be modified manually
 pub mod constants;
 
-pub use quicklog_macros::{debug, error, info, trace, warn};
+pub use quicklog_macros::{debug, error, info, trace, warn, Serialize};
 
 /// Internal API
 ///
